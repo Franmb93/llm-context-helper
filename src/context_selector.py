@@ -269,7 +269,8 @@ class ContextSelector(tk.Tk):
             on_copy=self._copy_context,
             on_save=self._save_context,
             on_clear=self._clear_context,
-            on_context_menu=self._show_context_menu
+            on_context_menu=self._show_context_menu,
+            on_stats=self._show_context_stats
         )
         self.right_paned.add(self.context_panel.frame, weight=1)
     
@@ -1757,22 +1758,3 @@ class ContextSelector(tk.Tk):
                 f"Se omitieron {skipped_dirs} directorios."
             )
     
-    def _show_context_stats(self):
-        """Muestra estadísticas sobre el contexto actual."""
-        # Obtener estadísticas
-        stats = self.selection_manager.get_selection_stats()
-        
-        if stats['total_files'] == 0:
-            messagebox.showinfo("Estadísticas del contexto", "No hay archivos en el contexto.")
-            return
-        
-        # Crear un mensaje con las estadísticas
-        message = "Estadísticas del contexto actual:\n\n"
-        message += f"Archivos incluidos: {stats['total_files']}\n"
-        message += f"    - Archivos completos: {stats['whole_files']}\n"
-        message += f"    - Selecciones parciales: {stats['partial_selections']}\n\n"
-        message += f"Tamaño total: {stats['total_chars']} caracteres\n"
-        message += f"Tokens aproximados: {stats['approx_tokens']}\n"
-        
-        # Mostrar el diálogo con estadísticas
-        messagebox.showinfo("Estadísticas del contexto", message)

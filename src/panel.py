@@ -524,7 +524,7 @@ class FileContentPanel(Panel):
 class ContextPanel(Panel):
     """Panel para mostrar y gestionar el contexto seleccionado."""
     
-    def __init__(self, parent, on_copy, on_save, on_clear, on_context_menu, on_stats=None):
+    def __init__(self, parent, on_copy, on_save, on_clear, on_context_menu, on_stats):
         """
         Inicializa el panel de contexto.
         

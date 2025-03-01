@@ -1,7 +1,7 @@
 {
   "general": {
-    "theme": "dark",
-    "font_size": 14,
+    "theme": "light",
+    "font_size": 12,
     "word_wrap": true,
     "show_line_numbers": true
   },
