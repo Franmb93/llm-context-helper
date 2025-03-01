@@ -1,7 +1,7 @@
 Fase 3:
 
 ✅ Casillas de verificación junto a cada archivo: No veo la implementación para seleccionar/deseleccionar archivos completos con casillas de verificación en el Treeview.
-⭕ Resaltado visual del texto que ha sido seleccionado: No veo una implementación que marque visualmente en el archivo original qué fragmentos ya han sido seleccionados.
+✅ Resaltado visual del texto que ha sido seleccionado: No veo una implementación que marque visualmente en el archivo original qué fragmentos ya han sido seleccionados.
 ⭕ Botones para limpiar selecciones individuales: Si bien tienes la función para limpiar todo el contexto, no hay implementación para eliminar selecciones específicas.
 
 Fase 4:

@@ -30,6 +30,7 @@ class ContextSelector(tk.Tk):
         self.current_folder = None
         self.current_file = None
         self.selections = {}  # Diccionario para almacenar selecciones {file_path: [selection1, selection2, ...]}
+        self.selection_ranges = {}  # Diccionario para almacenar rangos de selecciones {file_path: [(start1, end1), (start2, end2), ...]}
         
         # Inicializar componentes
         self.file_manager = FileManager()
@@ -61,7 +62,7 @@ class ContextSelector(tk.Tk):
         # Menú Edición
         edit_menu = tk.Menu(self.menu_bar, tearoff=0)
         edit_menu.add_command(label="Copiar selección", command=self._copy_selection, accelerator="Ctrl+C")
-        edit_menu.add_command(label="Añadir selección al contexto", command=self._add_selection, accelerator="Ctrl+A")
+        edit_menu.add_command(label="Añadir selección al contexto", command=self._add_selection, accelerator="Alt+A")
         edit_menu.add_separator()
         edit_menu.add_command(label="Limpiar contexto", command=self._clear_context, accelerator="Ctrl+L")
         self.menu_bar.add_cascade(label="Edición", menu=edit_menu)
@@ -81,14 +82,25 @@ class ContextSelector(tk.Tk):
         # Atajos de teclado
         self.bind("<Control-o>", lambda event: self._open_folder())
         self.bind("<Control-s>", lambda event: self._save_context())
-        self.bind("<Control-a>", lambda event: self._add_selection())
         self.bind("<Control-l>", lambda event: self._clear_context())
+        
+        # Usar Alt+A en lugar de Ctrl+A para evitar conflicto con "Seleccionar todo"
+        self.bind("<Alt-a>", lambda event: self._add_selection())
+        
+        # Actualizar etiqueta en el menú para mostrar el nuevo atajo
+        edit_menu.entryconfig(
+            edit_menu.index("Añadir selección al contexto"), 
+            accelerator="Alt+A"
+        )
     
     def _create_main_layout(self):
         """Crea el diseño principal de la interfaz con paneles."""
         # Contenedor principal con paneles ajustables
         self.main_paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
         self.main_paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Configurar tag para resaltado de selecciones
+        self.highlight_tag = "selection_highlight"
         
         # Panel izquierdo (lista de archivos)
         self.left_frame = ttk.Frame(self.main_paned)
@@ -381,6 +393,9 @@ class ContextSelector(tk.Tk):
             file_ext = os.path.splitext(file_path)[1].lower()
             self.syntax_highlighter.highlight(self.file_content, file_ext)
             
+            # Aplicar resaltado a las selecciones previas (si existen)
+            self._apply_saved_highlights()
+            
             self.file_content.config(state=tk.DISABLED)
             
             # Actualizar título del frame
@@ -398,21 +413,49 @@ class ContextSelector(tk.Tk):
         self.file_content.config(state=tk.NORMAL)
         try:
             selection = self.file_content.get(tk.SEL_FIRST, tk.SEL_LAST)
+            # Guardar también las posiciones de la selección
+            sel_start = self.file_content.index(tk.SEL_FIRST)
+            sel_end = self.file_content.index(tk.SEL_LAST)
         except tk.TclError:
             messagebox.showinfo("Sin selección", "No hay texto seleccionado")
             self.file_content.config(state=tk.DISABLED)
             return
         
-        self.file_content.config(state=tk.DISABLED)
-        
         if not selection:
+            self.file_content.config(state=tk.DISABLED)
             return
+            
+        # Comprobar si el archivo completo ya está en el contexto
+        if self._is_whole_file_in_context(self.current_file):
+            messagebox.showinfo("Archivo ya incluido", 
+                               "El archivo completo ya está incluido en el contexto. "
+                               "La selección ya forma parte del contexto.")
+            self.file_content.config(state=tk.DISABLED)
+            return
+            
+        # Comprobar si la selección es un duplicado exacto
+        if self._is_selection_duplicate(self.current_file, selection):
+            messagebox.showinfo("Selección duplicada", 
+                               "Esta selección ya ha sido añadida al contexto.")
+            self.file_content.config(state=tk.DISABLED)
+            return
+        
+        # Eliminar selecciones que estén contenidas en esta nueva selección
+        self._remove_contained_selections(self.current_file, selection)
         
         # Añadir al diccionario de selecciones
         if self.current_file not in self.selections:
             self.selections[self.current_file] = []
+            self.selection_ranges[self.current_file] = []
         
-        self.selections[self.current_file].append(selection)
+        # Añadir la selección con flag False para indicar que NO es un archivo completo
+        self.selections[self.current_file].append((selection, False))
+        self.selection_ranges[self.current_file].append((sel_start, sel_end))
+        
+        # Aplicar el resaltado visual a la selección
+        self._highlight_selection(sel_start, sel_end)
+        
+        self.file_content.config(state=tk.DISABLED)
         
         # Actualizar el área de contexto
         self._update_context_display()
@@ -428,12 +471,19 @@ class ContextSelector(tk.Tk):
             with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
                 content = f.read()
                 
-            # Marcar que estamos incluyendo el archivo completo con un identificador especial
-            if file_path not in self.selections:
-                self.selections[file_path] = []
+            # Comprobar si ya hay selecciones individuales para este archivo
+            if file_path in self.selection_ranges:
+                # Eliminar todas las selecciones previas (visual y en datos)
+                if self.current_file == file_path:
+                    self._clear_all_highlights()
                 
-            # Usar None como marcador para indicar que se ha seleccionado el archivo completo
-            self.selections[file_path] = [content]
+                # Eliminar los rangos de selección previos
+                self.selection_ranges[file_path] = []
+            
+            # Marcar que estamos incluyendo el archivo completo
+            # Usar una tupla donde el primer elemento es el contenido y el segundo es un flag
+            # que indica que es el archivo completo (True) vs. una selección de texto (False)
+            self.selections[file_path] = [(content, True)]
             
         except Exception as e:
             messagebox.showerror("Error al cargar archivo", f"No se pudo cargar el archivo: {str(e)}")
@@ -442,6 +492,14 @@ class ContextSelector(tk.Tk):
         """Elimina un archivo del contexto."""
         if file_path in self.selections:
             del self.selections[file_path]
+        
+        # También eliminar los rangos de selección
+        if file_path in self.selection_ranges:
+            del self.selection_ranges[file_path]
+            
+        # Si el archivo actual es el que se está mostrando, limpiar los resaltados
+        if self.current_file == file_path:
+            self._clear_all_highlights()
     
     def _update_context_display(self):
         """Actualiza la visualización del contexto seleccionado."""
@@ -455,13 +513,19 @@ class ContextSelector(tk.Tk):
                 # Mostrar encabezado para el archivo
                 self.context_text.insert(tk.END, f"--- {file_name} ---\n", "file_header")
                 
-                # Verificar si es archivo completo o selecciones
-                if len(selections) == 1 and len(selections[0]) > 100:  # Asumimos que es archivo completo si hay una única selección grande
-                    self.context_text.insert(tk.END, "Archivo completo incluido\n\n", "complete_file")
-                    self.context_text.insert(tk.END, selections[0] + "\n\n")
-                else:
-                    # Para selecciones múltiples
-                    for i, selection in enumerate(selections):
+                # Procesar cada selección
+                has_whole_file = False
+                
+                for i, (selection, is_whole_file) in enumerate(selections):
+                    if is_whole_file:
+                        has_whole_file = True
+                        self.context_text.insert(tk.END, "Archivo completo incluido\n\n", "complete_file")
+                        self.context_text.insert(tk.END, selection + "\n\n")
+                        break  # Si hay un archivo completo, solo mostramos ese
+                
+                # Si no hay archivo completo, mostrar las selecciones individuales
+                if not has_whole_file:
+                    for i, (selection, _) in enumerate(selections):
                         self.context_text.insert(tk.END, f"Selección {i+1}:\n", "selection_header")
                         self.context_text.insert(tk.END, selection + "\n\n")
         
@@ -508,9 +572,13 @@ class ContextSelector(tk.Tk):
         """Limpia todo el contexto seleccionado."""
         if messagebox.askyesno("Limpiar contexto", "¿Está seguro de que desea limpiar todo el contexto?"):
             self.selections = {}
+            self.selection_ranges = {}
             self.context_text.config(state=tk.NORMAL)
             self.context_text.delete(1.0, tk.END)
             self.context_text.config(state=tk.NORMAL)
+            
+            # Limpiar resaltados visuales
+            self._clear_all_highlights()
     
     def _show_context_menu(self, event):
         """Muestra el menú contextual en el área de contenido de archivo."""
@@ -573,6 +641,82 @@ class ContextSelector(tk.Tk):
             print(f"Error al guardar configuración: {str(e)}")
             
 
+    def _is_whole_file_in_context(self, file_path):
+        """Comprueba si el archivo completo ya está en el contexto."""
+        if file_path not in self.selections:
+            return False
+            
+        # Buscar si alguna selección está marcada explícitamente como archivo completo
+        for content, is_whole_file in self.selections[file_path]:
+            if is_whole_file:
+                return True
+            
+        return False
+        
+    def _is_selection_duplicate(self, file_path, selection):
+        """Comprueba si una selección ya existe en el contexto."""
+        if file_path not in self.selections:
+            return False
+            
+        # Solo consideramos duplicado si es exactamente el mismo texto
+        # No es duplicado si esta selección contiene a otra existente
+        for existing_selection, is_whole_file in self.selections[file_path]:
+            if selection == existing_selection:
+                return True
+                
+        return False
+        
+    def _remove_contained_selections(self, file_path, new_selection):
+        """Elimina selecciones que estén contenidas dentro de la nueva selección."""
+        if file_path not in self.selections:
+            return False
+            
+        removed_any = False
+        indices_to_remove = []
+        
+        # Identificar selecciones existentes que son subconjuntos de la nueva
+        for i, (existing, is_whole_file) in enumerate(self.selections[file_path]):
+            # Si la selección existente está contenida completamente en la nueva
+            # y no son idénticas, y no es un archivo completo
+            if not is_whole_file and existing in new_selection and existing != new_selection:
+                indices_to_remove.append(i)
+                removed_any = True
+        
+        # Eliminar las selecciones contenidas (de atrás hacia adelante)
+        for i in sorted(indices_to_remove, reverse=True):
+            # Si estamos viendo este archivo, eliminar el resaltado visual
+            if self.current_file == file_path and i < len(self.selection_ranges[file_path]):
+                sel_start, sel_end = self.selection_ranges[file_path][i]
+                self.file_content.tag_remove(self.highlight_tag, sel_start, sel_end)
+            
+            # Eliminar de las estructuras de datos
+            del self.selections[file_path][i]
+            if i < len(self.selection_ranges[file_path]):
+                del self.selection_ranges[file_path][i]
+        
+        return removed_any
+    
+    def _highlight_selection(self, start_pos, end_pos):
+        """Aplica resaltado visual a una región de texto seleccionada."""
+        self.file_content.tag_add(self.highlight_tag, start_pos, end_pos)
+        self.file_content.tag_configure(
+            self.highlight_tag, 
+            background="#FFFF99",  # Amarillo claro
+            borderwidth=0
+        )
+    
+    def _apply_saved_highlights(self):
+        """Aplica resaltado a las selecciones previamente guardadas para el archivo actual."""
+        if self.current_file in self.selection_ranges:
+            for start_pos, end_pos in self.selection_ranges[self.current_file]:
+                self._highlight_selection(start_pos, end_pos)
+    
+    def _clear_all_highlights(self):
+        """Limpia todos los resaltados visuales en el contenido del archivo."""
+        self.file_content.config(state=tk.NORMAL)
+        self.file_content.tag_remove(self.highlight_tag, "1.0", tk.END)
+        self.file_content.config(state=tk.DISABLED)
+    
     def _create_dummy_icons(self):
         """Crea íconos temporales hasta que se implementen los íconos reales."""
         # Este método crea íconos básicos para desarrollo, en una aplicación completa
