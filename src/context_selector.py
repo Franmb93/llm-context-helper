@@ -53,6 +53,10 @@ class ContextSelector(tk.Tk):
         # Cargar configuración guardada
         self._load_settings()
     
+    # Modificar el método _create_menu en ContextSelector para agregar opciones de selección múltiple
+
+    # Modificar el método _create_menu en ContextSelector para agregar opciones de selección múltiple
+
     def _create_menu(self):
         """Crea la barra de menú principal."""
         self.menu_bar = tk.Menu(self)
@@ -74,8 +78,34 @@ class ContextSelector(tk.Tk):
         edit_menu.add_command(label="Copiar selección", command=self._copy_selection, accelerator="Ctrl+C")
         edit_menu.add_command(label="Añadir selección al contexto", command=self._add_selection, accelerator="Alt+A")
         edit_menu.add_separator()
+        
+        # Submenú para selecciones múltiples
+        multi_select_menu = tk.Menu(edit_menu, tearoff=0)
+        multi_select_menu.add_command(
+            label="Añadir archivos seleccionados", 
+            command=lambda: self._add_selected_files_to_context(self.file_tree_panel.file_tree.selection()),
+            accelerator="Alt+M"
+        )
+        multi_select_menu.add_command(
+            label="Seleccionar todos los archivos", 
+            command=lambda: self.file_tree_panel._select_all_files(None),
+            accelerator="Ctrl+A"
+        )
+        multi_select_menu.add_separator()
+        multi_select_menu.add_command(
+            label="Marcar seleccionados como incluidos", 
+            command=lambda: self.file_tree_panel._set_checkbox_state(True)
+        )
+        multi_select_menu.add_command(
+            label="Marcar seleccionados como no incluidos", 
+            command=lambda: self.file_tree_panel._set_checkbox_state(False)
+        )
+        edit_menu.add_cascade(label="Selección múltiple", menu=multi_select_menu)
+        
+        edit_menu.add_separator()
         edit_menu.add_command(label="Buscar en selecciones", command=self._search_selections, accelerator="Ctrl+F")
         edit_menu.add_separator()
+        edit_menu.add_command(label="Estadísticas del contexto", command=self._show_context_stats, accelerator="Ctrl+T")
         edit_menu.add_command(label="Limpiar contexto", command=self._clear_context, accelerator="Ctrl+L")
         self.menu_bar.add_cascade(label="Edición", menu=edit_menu)
         
@@ -99,6 +129,10 @@ class ContextSelector(tk.Tk):
         self.bind("<Control-f>", lambda event: self._search_selections())
         self.bind("<Control-Shift-s>", lambda event: self._save_selections())
         self.bind("<Control-Shift-o>", lambda event: self._load_selections())
+        
+        # Atajos para selección múltiple
+        self.bind("<Alt-m>", lambda event: self._add_selected_files_to_context(self.file_tree_panel.file_tree.selection()))
+        self.bind("<Control-t>", lambda event: self._show_context_stats())
     
     def _create_main_layout(self):
         """Crea el diseño principal de la interfaz con paneles."""
@@ -110,7 +144,8 @@ class ContextSelector(tk.Tk):
         self.file_tree_panel = FileTreePanel(
             self,
             on_file_select=self._on_file_select,
-            on_checkbox_click=self._on_checkbox_click
+            on_checkbox_click=self._on_checkbox_click,
+            on_add_selected_files=self._add_selected_files_to_context
         )
         self.main_paned.add(self.file_tree_panel.frame, weight=1)
         
@@ -705,3 +740,102 @@ class ContextSelector(tk.Tk):
             
             # Limpiar la referencia
             delattr(self, 'current_context_selection')
+    
+    def _show_context_stats(self):
+        """Muestra estadísticas sobre el contexto actual."""
+        # Obtener estadísticas
+        stats = self.selection_manager.get_selection_stats()
+        
+        if stats['total_files'] == 0:
+            messagebox.showinfo("Estadísticas del contexto", "No hay archivos en el contexto.")
+            return
+        
+        # Crear un mensaje con las estadísticas
+        message = "Estadísticas del contexto actual:\n\n"
+        message += f"Archivos incluidos: {stats['total_files']}\n"
+        message += f"    - Archivos completos: {stats['whole_files']}\n"
+        message += f"    - Selecciones parciales: {stats['partial_selections']}\n\n"
+        message += f"Tamaño total: {stats['total_chars']} caracteres\n"
+        message += f"Tokens aproximados: {stats['approx_tokens']}\n"
+        
+        # Mostrar el diálogo con estadísticas
+        messagebox.showinfo("Estadísticas del contexto", message)
+        
+    def _add_selected_files_to_context(self, selected_items):
+        """
+        Añade múltiples archivos seleccionados al contexto.
+        
+        Args:
+            selected_items: Lista de IDs de elementos seleccionados en el árbol
+        """
+        if not selected_items:
+            return
+        
+        # Contadores para estadísticas
+        skipped_dirs = 0
+        file_paths = []
+        
+        # Recopilar las rutas de los archivos a añadir
+        for item_id in selected_items:
+            # Verificar si es un archivo (no directorio)
+            item_tags = self.file_tree_panel.file_tree.item(item_id, "tags")
+            if "directory" in item_tags:
+                skipped_dirs += 1
+                continue
+            
+            # Obtener la ruta completa del archivo
+            file_path = self._get_full_path(item_id, self.file_tree_panel.file_tree)
+            if file_path and os.path.isfile(file_path):
+                file_paths.append((item_id, file_path))
+        
+        # Procesar los archivos en lote
+        if file_paths:
+            # Extraer solo las rutas para pasarlas al selection_manager
+            paths_only = [path for _, path in file_paths]
+            success_count, error_count = self.selection_manager.add_multiple_files(paths_only)
+            
+            # Actualizar las casillas de verificación para los archivos añadidos
+            for item_id, _ in file_paths:
+                self.file_tree_panel.file_tree.item(item_id, values=("☑",))
+            
+            # Mostrar un resumen de la operación
+            if success_count > 0:
+                messagebox.showinfo(
+                    "Archivos añadidos", 
+                    f"Se añadieron {success_count} archivos al contexto.\n"
+                    f"Se omitieron {skipped_dirs} directorios.\n"
+                    f"Errores: {error_count}"
+                )
+            else:
+                messagebox.showinfo(
+                    "Sin cambios", 
+                    f"No se añadieron nuevos archivos al contexto.\n"
+                    f"Se omitieron {skipped_dirs} directorios.\n"
+                    f"Errores: {error_count}"
+                )
+        else:
+            messagebox.showinfo(
+                "Sin cambios", 
+                f"No se seleccionaron archivos válidos para añadir.\n"
+                f"Se omitieron {skipped_dirs} directorios."
+            )
+    
+    def _show_context_stats(self):
+        """Muestra estadísticas sobre el contexto actual."""
+        # Obtener estadísticas
+        stats = self.selection_manager.get_selection_stats()
+        
+        if stats['total_files'] == 0:
+            messagebox.showinfo("Estadísticas del contexto", "No hay archivos en el contexto.")
+            return
+        
+        # Crear un mensaje con las estadísticas
+        message = "Estadísticas del contexto actual:\n\n"
+        message += f"Archivos incluidos: {stats['total_files']}\n"
+        message += f"    - Archivos completos: {stats['whole_files']}\n"
+        message += f"    - Selecciones parciales: {stats['partial_selections']}\n\n"
+        message += f"Tamaño total: {stats['total_chars']} caracteres\n"
+        message += f"Tokens aproximados: {stats['approx_tokens']}\n"
+        
+        # Mostrar el diálogo con estadísticas
+        messagebox.showinfo("Estadísticas del contexto", message)

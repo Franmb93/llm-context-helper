@@ -45,7 +45,7 @@ class Panel:
 class FileTreePanel(Panel):
     """Panel para mostrar y seleccionar archivos."""
     
-    def __init__(self, parent, on_file_select, on_checkbox_click):
+    def __init__(self, parent, on_file_select, on_checkbox_click, on_add_selected_files=None):
         """
         Inicializa el panel de archivos.
         
@@ -53,9 +53,12 @@ class FileTreePanel(Panel):
             parent: Widget padre
             on_file_select: Callback para cuando se selecciona un archivo
             on_checkbox_click: Callback para cuando se hace clic en una casilla
+            on_add_selected_files: Callback para añadir múltiples archivos seleccionados
         """
         self.on_file_select = on_file_select
         self.on_checkbox_click = on_checkbox_click
+        self.on_add_selected_files = on_add_selected_files
+        self.show_hidden_files = False  # Agregar opción para archivos ocultos
         super().__init__(parent)
     
     def _create_widgets(self):
@@ -79,12 +82,24 @@ class FileTreePanel(Panel):
         self.file_frame = ttk.Frame(self.frame)
         self.file_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
+        # Frame para botones de acciones múltiples
+        self.actions_frame = ttk.Frame(self.frame)
+        self.actions_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        # Botón para añadir múltiples archivos seleccionados
+        self.add_selected_btn = ttk.Button(
+            self.actions_frame,
+            text="Añadir archivos seleccionados al contexto",
+            command=self._on_add_selected_files
+        )
+        self.add_selected_btn.pack(side=tk.LEFT, padx=5, pady=5)
+        
         # Scrollbar para el Treeview
         self.file_tree_scroll = ttk.Scrollbar(self.file_frame)
         self.file_tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         
         # Treeview para mostrar la estructura de archivos
-        self.file_tree = ttk.Treeview(self.file_frame, yscrollcommand=self.file_tree_scroll.set)
+        self.file_tree = ttk.Treeview(self.file_frame, yscrollcommand=self.file_tree_scroll.set, selectmode="extended")
         self.file_tree.pack(fill=tk.BOTH, expand=True)
         self.file_tree_scroll.config(command=self.file_tree.yview)
         
@@ -96,9 +111,35 @@ class FileTreePanel(Panel):
         self.file_tree.heading("#0", text="Archivo")
         self.file_tree.heading("select", text="Incluir")
         
+        # Crear menú contextual para el árbol
+        self.tree_menu = tk.Menu(self.file_tree, tearoff=0)
+        self.tree_menu.add_command(
+            label="Añadir al contexto",
+            command=self._on_add_selected_files
+        )
+        self.tree_menu.add_command(
+            label="Marcar como incluidos",
+            command=lambda: self._set_checkbox_state(True)
+        )
+        self.tree_menu.add_command(
+            label="Marcar como no incluidos",
+            command=lambda: self._set_checkbox_state(False)
+        )
+        self.tree_menu.add_separator()
+        self.tree_menu.add_command(
+            label="Seleccionar todos",
+            command=lambda: self._select_all_files(None)
+        )
+        
         # Vincular eventos
-        self.file_tree.bind("<<TreeviewSelect>>", self._handle_file_select)
+        self.file_tree.bind("<<TreeviewSelect>>", self._on_tree_select)
         self.file_tree.bind("<ButtonRelease-1>", self._handle_checkbox_click)
+        
+        # Vincular clic derecho al menú contextual
+        self.file_tree.bind("<Button-3>", self._show_tree_context_menu)
+        
+        # Vincular teclas de acceso rápido para selección múltiple
+        self.file_tree.bind("<Control-a>", self._select_all_files)
     
     def _on_select_folder(self):
         """Notifica que se debe seleccionar una carpeta."""
@@ -106,18 +147,78 @@ class FileTreePanel(Panel):
         if hasattr(self.parent, "_open_folder"):
             self.parent._open_folder()
     
-    # En FileTreePanel
-    def _handle_file_select(self, event):
+    def _on_tree_select(self, event):
         """Maneja la selección de un archivo."""
         if self.on_file_select:
-            selected_items = self.file_tree.selection()
-            if selected_items:
-                self.on_file_select(self.file_tree)
+            self.on_file_select(self.file_tree)
     
     def _handle_checkbox_click(self, event):
         """Maneja el clic en una casilla de verificación."""
         if self.on_checkbox_click:
             self.on_checkbox_click(event, self.file_tree)
+    
+    def _on_add_selected_files(self):
+        """Llama al callback para añadir los archivos seleccionados al contexto."""
+        if self.on_add_selected_files:
+            selected_items = self.file_tree.selection()
+            if selected_items:
+                self.on_add_selected_files(selected_items)
+    
+    def _show_tree_context_menu(self, event):
+        """Muestra el menú contextual para el árbol de archivos."""
+        # Seleccionar el elemento bajo el cursor si no está seleccionado
+        item = self.file_tree.identify_row(event.y)
+        if item and item not in self.file_tree.selection():
+            # Limpiar selección anterior si no se presiona Control
+            if not (event.state & 4):  # 4 es el valor para Control presionado
+                self.file_tree.selection_set(item)
+        
+        # Mostrar el menú contextual
+        if self.file_tree.selection():
+            self.tree_menu.tk_popup(event.x_root, event.y_root)
+        
+        return "break"  # Prevenir comportamiento por defecto
+    
+    def _select_all_files(self, event):
+        """Selecciona todos los archivos visibles en el árbol."""
+        for item in self.file_tree.get_children():
+            self.file_tree.selection_add(item)
+            # También seleccionar hijos recursivamente
+            self._select_children(item)
+        return "break"  # Prevenir la propagación del evento
+    
+    def _select_children(self, parent_item):
+        """Selecciona recursivamente todos los hijos de un elemento."""
+        for child in self.file_tree.get_children(parent_item):
+            self.file_tree.selection_add(child)
+            self._select_children(child)
+    
+    def _set_checkbox_state(self, checked):
+        """
+        Cambia el estado de las casillas de verificación para los elementos seleccionados.
+        
+        Args:
+            checked (bool): True para marcar, False para desmarcar
+        """
+        for item_id in self.file_tree.selection():
+            # Verificar si es un archivo (no directorio)
+            item_tags = self.file_tree.item(item_id, "tags")
+            if "file" in item_tags:
+                # Actualizar el valor en el árbol
+                new_state = "☑" if checked else "☐"
+                self.file_tree.item(item_id, values=(new_state,))
+                
+                # Si hay callback para clic en checkbox, notificar el cambio
+                if self.on_checkbox_click and self.on_add_selected_files:
+                    # Crear un evento sintético para el clic en checkbox
+                    file_path = self.parent._get_full_path(item_id, self.file_tree)
+                    if file_path:
+                        if checked:
+                            self.on_add_selected_files([item_id])
+                        else:
+                            # Eliminar del contexto (esto requiere acceso al SelectionManager)
+                            if hasattr(self.parent, "selection_manager"):
+                                self.parent.selection_manager.remove_file(file_path)
     
     def set_current_folder(self, folder_path):
         """Actualiza la carpeta mostrada."""
@@ -127,9 +228,8 @@ class FileTreePanel(Panel):
         """Limpia todos los elementos del árbol."""
         for item in self.file_tree.get_children():
             self.file_tree.delete(item)
+            
 
-
-# Agregar a panel.py
 class FileContentPanel(Panel):
     """Panel para mostrar el contenido de archivos con resaltado de sintaxis."""
     
@@ -149,6 +249,48 @@ class FileContentPanel(Panel):
         self.current_file = None
         self.highlight_tag = "selection_highlight"
         super().__init__(parent)
+    
+    def _set_checkbox_state(self, checked):
+        """
+        Cambia el estado de las casillas de verificación para los elementos seleccionados.
+        
+        Args:
+            checked (bool): True para marcar, False para desmarcar
+        """
+        for item_id in self.file_tree.selection():
+            # Verificar si es un archivo (no directorio)
+            item_tags = self.file_tree.item(item_id, "tags")
+            if "file" in item_tags:
+                # Actualizar el valor en el árbol
+                new_state = "☑" if checked else "☐"
+                self.file_tree.item(item_id, values=(new_state,))
+                
+                # Si hay callback para clic en checkbox, notificar el cambio
+                if self.on_checkbox_click and self.on_add_selected_files:
+                    # Crear un evento sintético para el clic en checkbox
+                    file_path = self.parent._get_full_path(item_id, self.file_tree)
+                    if file_path:
+                        if checked:
+                            self.on_add_selected_files([item_id])
+                        else:
+                            # Eliminar del contexto (esto requiere acceso al SelectionManager)
+                            if hasattr(self.parent, "selection_manager"):
+                                self.parent.selection_manager.remove_file(file_path)
+    
+    def _show_tree_context_menu(self, event):
+        """Muestra el menú contextual para el árbol de archivos."""
+        # Seleccionar el elemento bajo el cursor si no está seleccionado
+        item = self.file_tree.identify_row(event.y)
+        if item and item not in self.file_tree.selection():
+            # Limpiar selección anterior si no se presiona Control
+            if not (event.state & 4):  # 4 es el valor para Control presionado
+                self.file_tree.selection_set(item)
+        
+        # Mostrar el menú contextual
+        if self.file_tree.selection():
+            self.tree_menu.tk_popup(event.x_root, event.y_root)
+        
+        return "break"
     
     def _create_widgets(self):
         """Crea los widgets del panel de contenido."""
@@ -293,7 +435,7 @@ class FileContentPanel(Panel):
 class ContextPanel(Panel):
     """Panel para mostrar y gestionar el contexto seleccionado."""
     
-    def __init__(self, parent, on_copy, on_save, on_clear, on_context_menu):
+    def __init__(self, parent, on_copy, on_save, on_clear, on_context_menu, on_stats=None):
         """
         Inicializa el panel de contexto.
         
@@ -303,11 +445,13 @@ class ContextPanel(Panel):
             on_save: Callback para guardar contexto
             on_clear: Callback para limpiar contexto
             on_context_menu: Callback para menú contextual
+            on_stats: Callback para mostrar estadísticas
         """
         self.on_copy = on_copy
         self.on_save = on_save
         self.on_clear = on_clear
         self.on_context_menu = on_context_menu
+        self.on_stats = on_stats
         self.context_selection_markers = {}
         super().__init__(parent)
     
@@ -332,6 +476,13 @@ class ContextPanel(Panel):
             command=self._handle_save
         )
         self.save_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.stats_btn = ttk.Button(
+            self.btn_frame,
+            text="Estadísticas",
+            command=self._handle_stats
+        )
+        self.stats_btn.pack(side=tk.LEFT, padx=5)
         
         self.clear_btn = ttk.Button(
             self.btn_frame, 
@@ -372,6 +523,11 @@ class ContextPanel(Panel):
         # Vincular eventos
         self.context_text.bind("<Button-3>", self._show_context_menu)
     
+    def _handle_stats(self):
+        """Maneja el evento de mostrar estadísticas del contexto."""
+        if self.on_stats:
+            self.on_stats()
+    
     def _handle_copy(self):
         """Maneja el evento de copiar contexto."""
         if self.on_copy:
@@ -389,8 +545,7 @@ class ContextPanel(Panel):
     
     def _handle_remove_selected(self):
         """Maneja el evento de eliminar selección."""
-        # Esta funcionalidad se implementa en ContextSelector
-        # ya que requiere acceso al SelectionManager
+
         pass
     
     def _show_context_menu(self, event):

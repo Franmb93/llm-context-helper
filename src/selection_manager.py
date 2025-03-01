@@ -284,69 +284,166 @@ class SelectionManager:
         return "\n".join(result)
     
     # Agregar en selection_manager.py
-def save_selections_to_file(self, file_path):
-    """
-    Guarda las selecciones actuales en un archivo JSON.
-    
-    Args:
-        file_path (str): Ruta donde guardar
+    def save_selections_to_file(self, file_path):
+        """
+        Guarda las selecciones actuales en un archivo JSON.
         
-    Returns:
-        bool: True si se guardó correctamente
-    """
-    import json
-    
-    # Crear estructura serializable
-    # No podemos guardar los rangos de texto directamente, así que solo guardamos contenido
-    data = {}
-    for path, selections in self.selections.items():
-        # Convertir a lista simple para guardar
-        data[path] = [(content, is_whole_file) for content, is_whole_file in selections]
-    
-    try:
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2)
-        return True
-    except Exception as e:
-        print(f"Error al guardar selecciones: {e}")
-        return False
+        Args:
+            file_path (str): Ruta donde guardar
+            
+        Returns:
+            bool: True si se guardó correctamente
+        """
+        import json
+        
+        # Crear estructura serializable
+        # No podemos guardar los rangos de texto directamente, así que solo guardamos contenido
+        data = {}
+        for path, selections in self.selections.items():
+            # Convertir a lista simple para guardar
+            data[path] = [(content, is_whole_file) for content, is_whole_file in selections]
+        
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+            return True
+        except Exception as e:
+            print(f"Error al guardar selecciones: {e}")
+            return False
 
-def load_selections_from_file(self, file_path):
-    """
-    Carga selecciones desde un archivo JSON.
-    
-    Args:
-        file_path (str): Ruta del archivo a cargar
+    def load_selections_from_file(self, file_path):
+        """
+        Carga selecciones desde un archivo JSON.
         
-    Returns:
-        bool: True si se cargó correctamente
-    """
-    import json
-    
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        Args:
+            file_path (str): Ruta del archivo a cargar
+            
+        Returns:
+            bool: True si se cargó correctamente
+        """
+        import json
         
-        # Limpiar selecciones actuales
-        self.selections = {}
-        self.selection_ranges = {}
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Limpiar selecciones actuales
+            self.selections = {}
+            self.selection_ranges = {}
+            
+            # Cargar nuevas selecciones
+            for path, file_selections in data.items():
+                # Verificar que el archivo todavía existe
+                if os.path.exists(path):
+                    self.selections[path] = []
+                    for content, is_whole_file in file_selections:
+                        self.selections[path].append((content, is_whole_file))
+                    
+                    # Inicializar lista de rangos vacía (los rangos se reconstruirán al abrir el archivo)
+                    self.selection_ranges[path] = []
+            
+            # Notificar a los observadores
+            self.notify_observers()
+            return True
+        except Exception as e:
+            print(f"Error al cargar selecciones: {e}")
+            return False
         
-        # Cargar nuevas selecciones
-        for path, file_selections in data.items():
-            # Verificar que el archivo todavía existe
-            if os.path.exists(path):
-                self.selections[path] = []
-                for content, is_whole_file in file_selections:
-                    self.selections[path].append((content, is_whole_file))
+    def add_multiple_files(self, file_paths):
+        """
+        Añade múltiples archivos completos al contexto en una sola operación.
+        
+        Args:
+            file_paths (list): Lista de rutas de archivos a añadir
+            
+        Returns:
+            tuple: (éxitos, fallos) - contadores de archivos procesados
+        """
+        success_count = 0
+        error_count = 0
+        
+        for file_path in file_paths:
+            try:
+                # Verificar si el archivo existe y es legible
+                if not os.path.isfile(file_path):
+                    error_count += 1
+                    continue
                 
-                # Inicializar lista de rangos vacía (los rangos se reconstruirán al abrir el archivo)
-                self.selection_ranges[path] = []
+                # Leer el contenido del archivo
+                with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                    content = f.read()
+                
+                # Añadir el archivo al contexto
+                if self.add_whole_file(file_path, content):
+                    success_count += 1
+                else:
+                    # Si ya existía, considerarlo como éxito
+                    success_count += 1
+            except Exception as e:
+                print(f"Error al añadir archivo {file_path}: {str(e)}")
+                error_count += 1
         
-        # Notificar a los observadores
-        self.notify_observers()
-        return True
-    except Exception as e:
-        print(f"Error al cargar selecciones: {e}")
-        return False
-    
-    
+        # Notificar a los observadores (una sola vez al final de la operación por lotes)
+        if success_count > 0:
+            self.notify_observers()
+        
+        return (success_count, error_count)
+
+    def remove_multiple_files(self, file_paths):
+        """
+        Elimina múltiples archivos del contexto en una sola operación.
+        
+        Args:
+            file_paths (list): Lista de rutas de archivos a eliminar
+            
+        Returns:
+            int: Número de archivos eliminados
+        """
+        removed_count = 0
+        
+        for file_path in file_paths:
+            if file_path in self.selections:
+                del self.selections[file_path]
+                
+                if file_path in self.selection_ranges:
+                    del self.selection_ranges[file_path]
+                
+                removed_count += 1
+        
+        # Notificar a los observadores (una sola vez al final)
+        if removed_count > 0:
+            self.notify_observers()
+        
+        return removed_count
+
+    def get_selection_stats(self):
+        """
+        Obtiene estadísticas sobre las selecciones actuales.
+        
+        Returns:
+            dict: Diccionario con estadísticas
+        """
+        total_files = len(self.selections)
+        total_whole_files = 0
+        total_selections = 0
+        total_chars = 0
+        
+        # Contar tipos de selecciones y tamaño total
+        for file_path, selections in self.selections.items():
+            for content, is_whole_file in selections:
+                if is_whole_file:
+                    total_whole_files += 1
+                else:
+                    total_selections += 1
+                
+                total_chars += len(content)
+        
+        return {
+            'total_files': total_files,
+            'whole_files': total_whole_files,
+            'partial_selections': total_selections,
+            'total_chars': total_chars,
+            'approx_tokens': total_chars // 4  # Estimación muy aproximada
+        }
+
+
