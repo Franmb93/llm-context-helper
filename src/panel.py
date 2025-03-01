@@ -41,7 +41,6 @@ class Panel:
         if self.frame:
             self.frame.place(**kwargs)
 
-
 class FileTreePanel(Panel):
     """Panel para mostrar y seleccionar archivos."""
     
@@ -116,10 +115,6 @@ class FileTreePanel(Panel):
         self.tree_menu.add_command(
             label="Añadir al contexto",
             command=self._on_add_selected_files
-        )
-        self.tree_menu.add_command(
-            label="Marcar como incluidos",
-            command=lambda: self._set_checkbox_state(True)
         )
         self.tree_menu.add_command(
             label="Marcar como no incluidos",
@@ -228,8 +223,6 @@ class FileTreePanel(Panel):
         """Limpia todos los elementos del árbol."""
         for item in self.file_tree.get_children():
             self.file_tree.delete(item)
-            
-
 class FileContentPanel(Panel):
     """Panel para mostrar el contenido de archivos con resaltado de sintaxis."""
     

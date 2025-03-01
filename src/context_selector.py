@@ -93,10 +93,6 @@ class ContextSelector(tk.Tk):
         )
         multi_select_menu.add_separator()
         multi_select_menu.add_command(
-            label="Marcar seleccionados como incluidos", 
-            command=lambda: self.file_tree_panel._set_checkbox_state(True)
-        )
-        multi_select_menu.add_command(
             label="Marcar seleccionados como no incluidos", 
             command=lambda: self.file_tree_panel._set_checkbox_state(False)
         )
@@ -798,22 +794,16 @@ class ContextSelector(tk.Tk):
             for item_id, _ in file_paths:
                 self.file_tree_panel.file_tree.item(item_id, values=("☑",))
             
-            # Mostrar un resumen de la operación
-            if success_count > 0:
-                messagebox.showinfo(
-                    "Archivos añadidos", 
+            # Mostrar mensaje solo si hay errores
+            if error_count > 0:
+                messagebox.showerror(
+                    "Error al añadir archivos", 
                     f"Se añadieron {success_count} archivos al contexto.\n"
                     f"Se omitieron {skipped_dirs} directorios.\n"
-                    f"Errores: {error_count}"
+                    f"No se pudieron añadir {error_count} archivos."
                 )
-            else:
-                messagebox.showinfo(
-                    "Sin cambios", 
-                    f"No se añadieron nuevos archivos al contexto.\n"
-                    f"Se omitieron {skipped_dirs} directorios.\n"
-                    f"Errores: {error_count}"
-                )
-        else:
+        elif skipped_dirs > 0:
+            # Mostrar mensaje si solo se seleccionaron directorios
             messagebox.showinfo(
                 "Sin cambios", 
                 f"No se seleccionaron archivos válidos para añadir.\n"
