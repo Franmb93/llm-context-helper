@@ -54,19 +54,23 @@ class FileManager:
             '.env'
         ]
     
+    # En file_manager.py, método scan_directory
     def scan_directory(self, directory):
         """
         Escanea un directorio y devuelve una lista estructurada de archivos y carpetas.
         
         Args:
             directory (str): Ruta del directorio a escanear
-            
+                
         Returns:
             list: Lista de diccionarios con información de archivos y carpetas
         """
+        # Normalizar la ruta
+        directory = os.path.normpath(directory)
+        
         result = []
         
-        try:
+        try:        
             # Obtener listado de contenidos del directorio
             entries = os.listdir(directory)
             

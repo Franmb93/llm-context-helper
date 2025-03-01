@@ -1,3 +1,4 @@
+# Modificar context_selector.py
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -9,9 +10,11 @@ import os
 import json
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-import tkinter.font as tkfont
+
 from file_manager import FileManager
 from syntax_highlighter import SyntaxHighlighter
+from selection_manager import SelectionManager
+from panel import FileTreePanel, FileContentPanel, ContextPanel
 from utils import copy_to_clipboard, save_to_file
 
 class ContextSelector(tk.Tk):
@@ -29,20 +32,24 @@ class ContextSelector(tk.Tk):
         # Variables de estado
         self.current_folder = None
         self.current_file = None
-        self.selections = {}  # Diccionario para almacenar selecciones {file_path: [selection1, selection2, ...]}
-        self.selection_ranges = {}  # Diccionario para almacenar rangos de selecciones {file_path: [(start1, end1), (start2, end2), ...]}
         
         # Inicializar componentes
         self.file_manager = FileManager()
         self.syntax_highlighter = SyntaxHighlighter()
+        self.selection_manager = SelectionManager()
         
-        # Añadir la siguiente línea:
+        # Registrar como observador
+        self.selection_manager.add_observer(self)
+        
+        # Crear íconos para el árbol de archivos
         self._create_dummy_icons()
         
         # Crear la interfaz
         self._create_menu()
         self._create_main_layout()
         
+        self.context_panel.set_remove_handler(self._remove_selected_text)
+
         # Cargar configuración guardada
         self._load_settings()
     
@@ -55,6 +62,9 @@ class ContextSelector(tk.Tk):
         file_menu.add_command(label="Abrir carpeta", command=self._open_folder, accelerator="Ctrl+O")
         file_menu.add_separator()
         file_menu.add_command(label="Guardar contexto", command=self._save_context, accelerator="Ctrl+S")
+        file_menu.add_command(label="Guardar selecciones", command=self._save_selections, accelerator="Ctrl+Shift+S")
+        file_menu.add_separator()
+        file_menu.add_command(label="Cargar selecciones", command=self._load_selections, accelerator="Ctrl+Shift+O")
         file_menu.add_separator()
         file_menu.add_command(label="Salir", command=self.quit, accelerator="Alt+F4")
         self.menu_bar.add_cascade(label="Archivo", menu=file_menu)
@@ -63,6 +73,8 @@ class ContextSelector(tk.Tk):
         edit_menu = tk.Menu(self.menu_bar, tearoff=0)
         edit_menu.add_command(label="Copiar selección", command=self._copy_selection, accelerator="Ctrl+C")
         edit_menu.add_command(label="Añadir selección al contexto", command=self._add_selection, accelerator="Alt+A")
+        edit_menu.add_separator()
+        edit_menu.add_command(label="Buscar en selecciones", command=self._search_selections, accelerator="Ctrl+F")
         edit_menu.add_separator()
         edit_menu.add_command(label="Limpiar contexto", command=self._clear_context, accelerator="Ctrl+L")
         self.menu_bar.add_cascade(label="Edición", menu=edit_menu)
@@ -83,15 +95,10 @@ class ContextSelector(tk.Tk):
         self.bind("<Control-o>", lambda event: self._open_folder())
         self.bind("<Control-s>", lambda event: self._save_context())
         self.bind("<Control-l>", lambda event: self._clear_context())
-        
-        # Usar Alt+A en lugar de Ctrl+A para evitar conflicto con "Seleccionar todo"
         self.bind("<Alt-a>", lambda event: self._add_selection())
-        
-        # Actualizar etiqueta en el menú para mostrar el nuevo atajo
-        edit_menu.entryconfig(
-            edit_menu.index("Añadir selección al contexto"), 
-            accelerator="Alt+A"
-        )
+        self.bind("<Control-f>", lambda event: self._search_selections())
+        self.bind("<Control-Shift-s>", lambda event: self._save_selections())
+        self.bind("<Control-Shift-o>", lambda event: self._load_selections())
     
     def _create_main_layout(self):
         """Crea el diseño principal de la interfaz con paneles."""
@@ -99,776 +106,41 @@ class ContextSelector(tk.Tk):
         self.main_paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
         self.main_paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Configurar tag para resaltado de selecciones
-        self.highlight_tag = "selection_highlight"
-        
         # Panel izquierdo (lista de archivos)
-        self.left_frame = ttk.Frame(self.main_paned)
-        self.main_paned.add(self.left_frame, weight=1)
+        self.file_tree_panel = FileTreePanel(
+            self,
+            on_file_select=self._on_file_select,
+            on_checkbox_click=self._on_checkbox_click
+        )
+        self.main_paned.add(self.file_tree_panel.frame, weight=1)
         
-        # Botón para seleccionar carpeta
-        self.folder_frame = ttk.Frame(self.left_frame)
-        self.folder_frame.pack(fill=tk.X, padx=5, pady=5)
-        
-        self.folder_btn = ttk.Button(self.folder_frame, text="Seleccionar carpeta", command=self._open_folder)
-        self.folder_btn.pack(side=tk.LEFT, padx=5)
-        
-        self.current_folder_var = tk.StringVar(value="Ninguna carpeta seleccionada")
-        self.folder_label = ttk.Label(self.folder_frame, textvariable=self.current_folder_var, 
-                                     font=("TkDefaultFont", 9, "italic"))
-        self.folder_label.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
-        
-        # Crear el Treeview para la lista de archivos
-        self.file_frame = ttk.Frame(self.left_frame)
-        self.file_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-        # Scrollbar para el Treeview
-        self.file_tree_scroll = ttk.Scrollbar(self.file_frame)
-        self.file_tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # Treeview para mostrar la estructura de archivos
-        self.file_tree = ttk.Treeview(self.file_frame, yscrollcommand=self.file_tree_scroll.set)
-        self.file_tree.pack(fill=tk.BOTH, expand=True)
-        self.file_tree_scroll.config(command=self.file_tree.yview)
-        
-        # Configurar columnas del Treeview
-        self.file_tree["columns"] = ("select",)
-        self.file_tree.column("#0", width=250, minwidth=150)
-        self.file_tree.column("select", width=50, minwidth=50, stretch=tk.NO)
-        
-        self.file_tree.heading("#0", text="Archivo")
-        self.file_tree.heading("select", text="Incluir")
-        
-        # Vincular eventos
-        self.file_tree.bind("<<TreeviewSelect>>", self._on_file_select)
-        self.file_tree.bind("<ButtonRelease-1>", self._on_checkbox_click)
-        
-        # Panel derecho (contenido del archivo y contexto)
+        # Panel derecho (contenido + contexto)
         self.right_paned = ttk.PanedWindow(self.main_paned, orient=tk.VERTICAL)
         self.main_paned.add(self.right_paned, weight=3)
         
         # Panel superior (visualización de archivos)
-        self.file_content_frame = ttk.LabelFrame(self.right_paned, text="Contenido del archivo")
-        self.right_paned.add(self.file_content_frame, weight=2)
-        
-        # Crear widget Text con scrollbars
-        self.file_content_scrolly = ttk.Scrollbar(self.file_content_frame)
-        self.file_content_scrolly.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        self.file_content_scrollx = ttk.Scrollbar(self.file_content_frame, orient=tk.HORIZONTAL)
-        self.file_content_scrollx.pack(side=tk.BOTTOM, fill=tk.X)
-        
-        self.file_content = tk.Text(
-            self.file_content_frame,
-            wrap=tk.NONE,
-            yscrollcommand=self.file_content_scrolly.set,
-            xscrollcommand=self.file_content_scrollx.set,
-            font=("Courier New", 10),
-            state=tk.DISABLED
+        self.file_content_panel = FileContentPanel(
+            self.right_paned,
+            syntax_highlighter=self.syntax_highlighter,
+            on_add_selection=self._add_selection_from_panel,
+            on_context_menu=self._show_file_context_menu
         )
-        self.file_content.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
-        self.file_content_scrolly.config(command=self.file_content.yview)
-        self.file_content_scrollx.config(command=self.file_content.xview)
-        
-        # Botón para añadir selección al contexto
-        self.selection_frame = ttk.Frame(self.file_content_frame)
-        self.selection_frame.pack(fill=tk.X, padx=5, pady=5)
-        
-        self.add_selection_btn = ttk.Button(self.selection_frame, text="Añadir selección al contexto", 
-                                           command=self._add_selection)
-        self.add_selection_btn.pack(side=tk.LEFT, padx=5)
-        
-        # Vincular menú contextual al Text
-        self.file_content_menu = tk.Menu(self.file_content, tearoff=0)
-        self.file_content_menu.add_command(label="Añadir selección al contexto", command=self._add_selection)
-        self.file_content_menu.add_command(label="Copiar", command=self._copy_selection)
-        
-        self.file_content.bind("<Button-3>", self._show_context_menu)
+        self.right_paned.add(self.file_content_panel.frame, weight=2)
         
         # Panel inferior (contexto recopilado)
-        self.context_frame = ttk.LabelFrame(self.right_paned, text="Contexto seleccionado")
-        self.right_paned.add(self.context_frame, weight=1)
-        
-        # Botones para el contexto
-        self.context_btn_frame = ttk.Frame(self.context_frame)
-        self.context_btn_frame.pack(fill=tk.X, padx=5, pady=5)
-        
-        self.copy_context_btn = ttk.Button(self.context_btn_frame, text="Copiar al portapapeles", 
-                                          command=self._copy_context)
-        self.copy_context_btn.pack(side=tk.LEFT, padx=5)
-        
-        self.save_context_btn = ttk.Button(self.context_btn_frame, text="Guardar contexto", 
-                                          command=self._save_context)
-        self.save_context_btn.pack(side=tk.LEFT, padx=5)
-        
-        self.clear_context_btn = ttk.Button(self.context_btn_frame, text="Limpiar contexto", 
-                                           command=self._clear_context)
-        self.clear_context_btn.pack(side=tk.LEFT, padx=5)
-        
-        # Crear widget Text para el contexto con scrollbars
-        self.context_scrolly = ttk.Scrollbar(self.context_frame)
-        self.context_scrolly.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        self.context_scrollx = ttk.Scrollbar(self.context_frame, orient=tk.HORIZONTAL)
-        self.context_scrollx.pack(side=tk.BOTTOM, fill=tk.X)
-        
-        self.context_text = tk.Text(
-            self.context_frame,
-            wrap=tk.NONE,
-            yscrollcommand=self.context_scrolly.set,
-            xscrollcommand=self.context_scrollx.set,
-            font=("Courier New", 10)
+        self.context_panel = ContextPanel(
+            self.right_paned,
+            on_copy=self._copy_context,
+            on_save=self._save_context,
+            on_clear=self._clear_context,
+            on_context_menu=self._show_context_menu
         )
-        self.context_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
-        self.context_scrolly.config(command=self.context_text.yview)
-        self.context_scrollx.config(command=self.context_text.xview)
-        
-        # Menú contextual para el área de contexto
-        self.context_menu = tk.Menu(self.context_text, tearoff=0)
-        self.context_menu.add_command(label="Eliminar selección", command=self._remove_selected_text)
-        self.context_text.bind("<Button-3>", self._show_context_text_menu)
-    
-    def _open_folder(self):
-        """Abre un diálogo para seleccionar una carpeta y la carga en el árbol."""
-        folder_path = filedialog.askdirectory(title="Seleccionar carpeta")
-        if folder_path:
-            self.current_folder = folder_path
-            self.current_folder_var.set(folder_path)
-            self._load_files()
-            self._save_settings()
-    
-    def _load_files(self):
-        """Carga los archivos de la carpeta seleccionada en el Treeview."""
-        # Limpiar el árbol actual
-        for item in self.file_tree.get_children():
-            self.file_tree.delete(item)
-        
-        if not self.current_folder:
-            return
-        
-        # Obtener la lista de archivos y carpetas
-        files = self.file_manager.scan_directory(self.current_folder)
-        
-        # Añadir cada archivo/carpeta al árbol
-        for file_info in files:
-            self._add_file_to_tree(file_info, "")
-    
-    def _add_file_to_tree(self, file_info, parent):
-        """Añade un archivo o carpeta al árbol de archivos con ícono."""
-        icon = "file"  
-        
-        if file_info["type"] == "directory":
-            icon = "directory"
-        elif "language" in file_info:
-            lang = file_info["language"].lower()
-            if lang in self.tree_icons:
-                icon = lang
-            elif lang == "python":
-                icon = "python"
-            elif lang in ["javascript", "js"]:
-                icon = "javascript"
-            elif lang == "html":
-                icon = "html"
-            elif lang == "css":
-                icon = "css"
-            elif lang in ["markdown", "md"]:
-                icon = "markdown"
-            elif lang == "json":
-                icon = "json"
-            elif lang == "xml":
-                icon = "xml"
-            elif lang in ["text", "txt"]:
-                icon = "text"
-        
-        # Set checkbox value - only for files, not directories
-        checkbox_value = "☐" if file_info["type"] == "file" else ""
-        
-        item_id = self.file_tree.insert(
-            parent, 
-            "end", 
-            text=file_info["name"],
-            values=(checkbox_value,),
-            tags=(file_info["type"],),
-            image=self.tree_icons.get(icon, self.tree_icons["file"])
-        )
-        
-        if file_info["type"] == "directory" and "children" in file_info:
-            for child in file_info["children"]:
-                self._add_file_to_tree(child, item_id)
-        
-        return item_id
-    
-    def _on_file_select(self, event):
-        """Maneja el evento de selección de un archivo en el árbol."""
-        selected_item = self.file_tree.selection()
-        if not selected_item:
-            return
-        
-        item_id = selected_item[0]
-        item_tags = self.file_tree.item(item_id, "tags")
-        
-        # Si es un directorio, expandir/colapsar
-        if "directory" in item_tags:
-            if self.file_tree.item(item_id, "open"):
-                self.file_tree.item(item_id, open=False)
-            else:
-                self.file_tree.item(item_id, open=True)
-            return
-        
-        # Si es un archivo, cargar su contenido
-        file_path = self._get_full_path(item_id)
-        if file_path:
-            self._load_file_content(file_path)
-            
-    def _on_checkbox_click(self, event):
-        """Maneja los clics en la columna de casillas de verificación."""
-        # Obtener la región donde se hizo clic
-        region = self.file_tree.identify_region(event.x, event.y)
-        
-        # Verificar si se hizo clic en una celda (no en encabezado, etc.)
-        if region == "cell":
-            # Obtener la columna donde se hizo clic
-            column = self.file_tree.identify_column(event.x)
-            
-            # Verificar si se hizo clic en la columna de casillas de verificación (columna #1)
-            if column == "#1":  # La columna "select" es la #1
-                item_id = self.file_tree.identify_row(event.y)
-                if item_id:
-                    # Obtener las etiquetas del elemento
-                    item_tags = self.file_tree.item(item_id, "tags")
-                    
-                    # Solo procesar si es un archivo (no un directorio)
-                    if "file" in item_tags:
-                        # Obtener el valor actual de la casilla
-                        current_values = self.file_tree.item(item_id, "values")
-                        current_state = current_values[0] if current_values else "☐"
-                        
-                        # Cambiar el estado
-                        new_state = "☑" if current_state == "☐" else "☐"
-                        
-                        # Actualizar el valor en el árbol
-                        self.file_tree.item(item_id, values=(new_state,))
-                        
-                        # Obtener la ruta completa del archivo
-                        file_path = self._get_full_path(item_id)
-                        
-                        # Actualizar el contexto según el nuevo estado
-                        if new_state == "☑":
-                            self._add_complete_file_to_context(file_path)
-                        else:
-                            self._remove_file_from_context(file_path)
-                            
-                        # Actualizar la visualización del contexto
-                        self._update_context_display()
-    
-    def _get_full_path(self, item_id):
-        """Obtiene la ruta completa de un elemento del árbol."""
-        path_parts = []
-        
-        # Recorrer el árbol hacia arriba para construir la ruta
-        while item_id:
-            item_text = self.file_tree.item(item_id, "text")
-            path_parts.insert(0, item_text)
-            item_id = self.file_tree.parent(item_id)
-        
-        # Construir la ruta completa
-        full_path = os.path.join(self.current_folder, *path_parts)
-        return full_path
-    
-    def _load_file_content(self, file_path):
-        """Carga el contenido de un archivo en el widget Text."""
-        try:
-            if not os.path.isfile(file_path):
-                return
-            
-            self.current_file = file_path
-            
-            # Leer el contenido del archivo
-            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
-                content = f.read()
-            
-            # Actualizar el widget Text
-            self.file_content.config(state=tk.NORMAL)
-            self.file_content.delete(1.0, tk.END)
-            self.file_content.insert(tk.END, content)
-            
-            # Aplicar resaltado de sintaxis según extensión
-            file_ext = os.path.splitext(file_path)[1].lower()
-            self.syntax_highlighter.highlight(self.file_content, file_ext)
-            
-            # Aplicar resaltado a las selecciones previas (si existen)
-            self._apply_saved_highlights()
-            
-            self.file_content.config(state=tk.DISABLED)
-            
-            # Actualizar título del frame
-            self.file_content_frame.config(text=f"Contenido: {os.path.basename(file_path)}")
-            
-        except Exception as e:
-            messagebox.showerror("Error al cargar archivo", f"No se pudo cargar el archivo: {str(e)}")
-    
-    def _add_selection(self):
-        """Añade la selección actual al contexto."""
-        if not self.current_file:
-            return
-        
-        # Obtener la selección actual
-        self.file_content.config(state=tk.NORMAL)
-        try:
-            selection = self.file_content.get(tk.SEL_FIRST, tk.SEL_LAST)
-            # Guardar también las posiciones de la selección
-            sel_start = self.file_content.index(tk.SEL_FIRST)
-            sel_end = self.file_content.index(tk.SEL_LAST)
-        except tk.TclError:
-            messagebox.showinfo("Sin selección", "No hay texto seleccionado")
-            self.file_content.config(state=tk.DISABLED)
-            return
-        
-        if not selection:
-            self.file_content.config(state=tk.DISABLED)
-            return
-            
-        # Comprobar si el archivo completo ya está en el contexto
-        if self._is_whole_file_in_context(self.current_file):
-            messagebox.showinfo("Archivo ya incluido", 
-                               "El archivo completo ya está incluido en el contexto. "
-                               "La selección ya forma parte del contexto.")
-            self.file_content.config(state=tk.DISABLED)
-            return
-            
-        # Comprobar si la selección es un duplicado exacto
-        if self._is_selection_duplicate(self.current_file, selection):
-            messagebox.showinfo("Selección duplicada", 
-                               "Esta selección ya ha sido añadida al contexto.")
-            self.file_content.config(state=tk.DISABLED)
-            return
-        
-        # Eliminar selecciones que estén contenidas en esta nueva selección
-        self._remove_contained_selections(self.current_file, selection)
-        
-        # Añadir al diccionario de selecciones
-        if self.current_file not in self.selections:
-            self.selections[self.current_file] = []
-            self.selection_ranges[self.current_file] = []
-        
-        # Añadir la selección con flag False para indicar que NO es un archivo completo
-        self.selections[self.current_file].append((selection, False))
-        self.selection_ranges[self.current_file].append((sel_start, sel_end))
-        
-        # Aplicar el resaltado visual a la selección
-        self._highlight_selection(sel_start, sel_end)
-        
-        self.file_content.config(state=tk.DISABLED)
-        
-        # Actualizar el área de contexto
-        self._update_context_display()
-        
-    def _add_complete_file_to_context(self, file_path):
-        """Añade el contenido completo de un archivo al contexto."""
-        try:
-            # Verificar si el archivo existe y es legible
-            if not os.path.isfile(file_path):
-                return
-                
-            # Leer el contenido del archivo
-            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
-                content = f.read()
-                
-            # Comprobar si ya hay selecciones individuales para este archivo
-            if file_path in self.selection_ranges:
-                # Eliminar todas las selecciones previas (visual y en datos)
-                if self.current_file == file_path:
-                    self._clear_all_highlights()
-                
-                # Eliminar los rangos de selección previos
-                self.selection_ranges[file_path] = []
-            
-            # Marcar que estamos incluyendo el archivo completo
-            # Usar una tupla donde el primer elemento es el contenido y el segundo es un flag
-            # que indica que es el archivo completo (True) vs. una selección de texto (False)
-            self.selections[file_path] = [(content, True)]
-            
-        except Exception as e:
-            messagebox.showerror("Error al cargar archivo", f"No se pudo cargar el archivo: {str(e)}")
-            
-    def _remove_file_from_context(self, file_path):
-        """Elimina un archivo del contexto."""
-        if file_path in self.selections:
-            del self.selections[file_path]
-        
-        # También eliminar los rangos de selección
-        if file_path in self.selection_ranges:
-            del self.selection_ranges[file_path]
-            
-        # Si el archivo actual es el que se está mostrando, limpiar los resaltados
-        if self.current_file == file_path:
-            self._clear_all_highlights()
-    
-    def _update_context_display(self):
-        """Actualiza la visualización del contexto seleccionado."""
-        self.context_text.config(state=tk.NORMAL)
-        self.context_text.delete(1.0, tk.END)
-        
-        # Variable para rastrear las posiciones de las selecciones en el contexto
-        self.context_selection_markers = {}
-        
-        for file_path, selections in self.selections.items():
-            if selections:
-                file_name = os.path.basename(file_path)
-                file_header_pos = self.context_text.index(tk.END)
-                
-                # Mostrar encabezado para el archivo
-                self.context_text.insert(tk.END, f"--- {file_name} ---\n", "file_header")
-                
-                # Procesar cada selección
-                has_whole_file = False
-                
-                for i, (selection, is_whole_file) in enumerate(selections):
-                    if is_whole_file:
-                        has_whole_file = True
-                        self.context_text.insert(tk.END, "Archivo completo incluido\n\n", "complete_file")
-                        
-                        # Guardar posición de inicio para el marcador de selección
-                        start_pos = self.context_text.index(tk.END)
-                        
-                        self.context_text.insert(tk.END, selection + "\n\n")
-                        
-                        # Guardar posición final
-                        end_pos = self.context_text.index(tk.END)
-                        
-                        # Almacenar marcadores de posición para esta selección
-                        if file_path not in self.context_selection_markers:
-                            self.context_selection_markers[file_path] = []
-                        
-                        # Guardar tupla con (índice_selección, posición_inicio, posición_fin)
-                        self.context_selection_markers[file_path].append((0, start_pos, end_pos, True))
-                        
-                        break  # Si hay un archivo completo, solo mostramos ese
-                
-                # Si no hay archivo completo, mostrar las selecciones individuales
-                if not has_whole_file:
-                    for i, (selection, _) in enumerate(selections):
-                        selection_header = f"Selección {i+1}:\n"
-                        self.context_text.insert(tk.END, selection_header, "selection_header")
-                        
-                        # Guardar posición de inicio para el marcador de selección
-                        start_pos = self.context_text.index(tk.END)
-                        
-                        self.context_text.insert(tk.END, selection + "\n\n")
-                        
-                        # Guardar posición final
-                        end_pos = self.context_text.index(tk.END)
-                        
-                        # Almacenar marcadores de posición para esta selección
-                        if file_path not in self.context_selection_markers:
-                            self.context_selection_markers[file_path] = []
-                        
-                        # Guardar tupla con (índice_selección, posición_inicio, posición_fin)
-                        self.context_selection_markers[file_path].append((i, start_pos, end_pos, False))
-        
-        # Configurar tags para el formato
-        self.context_text.tag_configure("file_header", font=("TkDefaultFont", 10, "bold"))
-        self.context_text.tag_configure("complete_file", font=("TkDefaultFont", 9, "italic"), foreground="#008000")
-        self.context_text.tag_configure("selection_header", font=("TkDefaultFont", 9, "italic"), foreground="#0000FF")
-        self.context_text.tag_configure("selection_highlight", background="#E0E0E0")
-        
-        self.context_text.config(state=tk.NORMAL)
-    
-    def _copy_selection(self):
-        """Copia la selección actual al portapapeles."""
-        try:
-            selection = self.file_content.get(tk.SEL_FIRST, tk.SEL_LAST)
-            copy_to_clipboard(self, selection)
-        except tk.TclError:
-            pass
-    
-    def _copy_context(self):
-        """Copia todo el contexto al portapapeles."""
-        context = self.context_text.get(1.0, tk.END)
-        if context:
-            copy_to_clipboard(self, context)
-            messagebox.showinfo("Contexto copiado", "El contexto ha sido copiado al portapapeles")
-    
-    def _save_context(self):
-        """Guarda el contexto en un archivo."""
-        context = self.context_text.get(1.0, tk.END)
-        if not context.strip():
-            messagebox.showinfo("Sin contexto", "No hay contexto para guardar")
-            return
-        
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".txt",
-            filetypes=[("Archivos de texto", "*.txt"), ("Todos los archivos", "*.*")],
-            title="Guardar contexto"
-        )
-        
-        if file_path:
-            save_to_file(context, file_path)
-            messagebox.showinfo("Contexto guardado", f"El contexto ha sido guardado en:\n{file_path}")
-    
-    def _clear_context(self):
-        """Limpia todo el contexto seleccionado."""
-        if messagebox.askyesno("Limpiar contexto", "¿Está seguro de que desea limpiar todo el contexto?"):
-            self.selections = {}
-            self.selection_ranges = {}
-            self.context_text.config(state=tk.NORMAL)
-            self.context_text.delete(1.0, tk.END)
-            self.context_text.config(state=tk.NORMAL)
-            
-            # Limpiar resaltados visuales
-            self._clear_all_highlights()
-    
-    def _show_context_menu(self, event):
-        """Muestra el menú contextual en el área de contenido de archivo."""
-        try:
-            self.file_content.selection_get()
-            self.file_content_menu.tk_popup(event.x_root, event.y_root)
-        except:
-            pass
-        finally:
-            self.file_content_menu.grab_release()
-            
-    def _show_context_text_menu(self, event):
-        """Muestra el menú contextual en el área de contexto."""
-        try:
-            # Marcar la posición del clic
-            self.context_text.mark_set("insert", f"@{event.x},{event.y}")
-            
-            # Determinar si el clic está dentro de alguna selección
-            current_pos = self.context_text.index("insert")
-            pos_line, pos_col = map(int, current_pos.split('.'))
-            
-            # Verificar si estamos dentro de alguna de las selecciones
-            selection_found = False
-            
-            for file_path, markers in self.context_selection_markers.items():
-                for marker in markers:
-                    idx, start_pos, end_pos, is_whole_file = marker
-                    
-                    start_line, start_col = map(int, start_pos.split('.'))
-                    end_line, end_col = map(int, end_pos.split('.'))
-                    
-                    # Si la posición actual está dentro de esta selección
-                    if (pos_line > start_line or (pos_line == start_line and pos_col >= start_col)) and \
-                       (pos_line < end_line or (pos_line == end_line and pos_col <= end_col)):
-                        # Resaltar visualmente la selección en el área de contexto
-                        self.context_text.tag_remove("selection_highlight", "1.0", tk.END)
-                        self.context_text.tag_add("selection_highlight", start_pos, end_pos)
-                        
-                        # Guardar la referencia a la selección para poder eliminarla
-                        self.current_context_selection = (file_path, idx, is_whole_file)
-                        
-                        # Mostrar el menú contextual
-                        self.context_menu.tk_popup(event.x_root, event.y_root)
-                        selection_found = True
-                        break
-                
-                if selection_found:
-                    break
-                    
-        except Exception as e:
-            print(f"Error en el menú contextual: {str(e)}")
-        finally:
-            self.context_menu.grab_release()
-    
-    def _remove_selected_text(self):
-        """Elimina la selección actualmente resaltada en el área de contexto."""
-        if hasattr(self, 'current_context_selection'):
-            file_path, idx, is_whole_file = self.current_context_selection
-            
-            if is_whole_file:
-                # Si es un archivo completo, eliminarlo completamente
-                self._remove_file_from_context(file_path)
-                
-                # Actualizar el estado del checkbox en el árbol
-                self._update_checkbox_state(file_path, False)
-            else:
-                # Si es una selección individual, eliminar solo esa selección
-                if file_path in self.selections and idx < len(self.selections[file_path]):
-                    # Eliminar de las estructuras de datos
-                    del self.selections[file_path][idx]
-                    
-                    # Si también tenemos los rangos guardados, eliminarlos
-                    if file_path in self.selection_ranges and idx < len(self.selection_ranges[file_path]):
-                        del self.selection_ranges[file_path][idx]
-                    
-                    # Si era la última selección, eliminar la entrada completa
-                    if not self.selections[file_path]:
-                        del self.selections[file_path]
-                        if file_path in self.selection_ranges:
-                            del self.selection_ranges[file_path]
-                    
-                    # Si el archivo actual es el que tenía la selección, actualizar los resaltados
-                    if self.current_file == file_path:
-                        self._clear_all_highlights()
-                        self._apply_saved_highlights()
-            
-            # Actualizar la visualización del contexto
-            self._update_context_display()
-            
-            # Limpiar la referencia
-            delattr(self, 'current_context_selection')
-    
-    def _update_checkbox_state(self, file_path, checked):
-        """Actualiza el estado de la casilla de verificación para un archivo."""
-        # Encontrar el ítem en el árbol que corresponde a esta ruta
-        file_name = os.path.basename(file_path)
-        
-        # Buscar este archivo en el árbol
-        for item_id in self._find_file_item_by_name(file_name):
-            full_path = self._get_full_path(item_id)
-            if full_path == file_path:
-                # Actualizar el valor en el árbol
-                new_state = "☑" if checked else "☐"
-                self.file_tree.item(item_id, values=(new_state,))
-                break
-    
-    def _find_file_item_by_name(self, file_name):
-        """Encuentra todos los items del árbol que coinciden con un nombre de archivo."""
-        result = []
-        
-        def _find_in_children(parent):
-            for item_id in self.file_tree.get_children(parent):
-                if self.file_tree.item(item_id, "text") == file_name:
-                    result.append(item_id)
-                _find_in_children(item_id)
-        
-        _find_in_children('')  # Empezar desde la raíz
-        return result
-    
-    def _open_settings(self):
-        """Abre el diálogo de configuración."""
-        # Aquí iría el código para abrir un diálogo de configuración
-        messagebox.showinfo("Configuración", "Funcionalidad en desarrollo")
-    
-    def _show_about(self):
-        """Muestra información sobre la aplicación."""
-        messagebox.showinfo(
-            "Acerca de",
-            "Selector de Contexto para LLMs\n"
-            "Versión 1.0\n\n"
-            "Aplicación para seleccionar archivos y fragmentos de código "
-            "como contexto para modelos de lenguaje durante la programación."
-        )
-    
-    def _load_settings(self):
-        """Carga la configuración guardada."""
-        try:
-            config_dir = os.path.join(os.path.dirname(__file__), "..", "config")
-            os.makedirs(config_dir, exist_ok=True)
-            
-            config_file = os.path.join(config_dir, "settings.json")
-            if os.path.exists(config_file):
-                with open(config_file, 'r') as f:
-                    settings = json.load(f)
-                
-                # Restaurar última carpeta
-                if "last_folder" in settings and os.path.exists(settings["last_folder"]):
-                    self.current_folder = settings["last_folder"]
-                    self.current_folder_var.set(settings["last_folder"])
-                    self._load_files()
-        except Exception as e:
-            print(f"Error al cargar configuración: {str(e)}")
-    
-    def _save_settings(self):
-        """Guarda la configuración actual."""
-        try:
-            config_dir = os.path.join(os.path.dirname(__file__), "..", "config")
-            os.makedirs(config_dir, exist_ok=True)
-            
-            settings = {
-                "last_folder": self.current_folder
-            }
-            
-            config_file = os.path.join(config_dir, "settings.json")
-            with open(config_file, 'w') as f:
-                json.dump(settings, f)
-        except Exception as e:
-            print(f"Error al guardar configuración: {str(e)}")
-            
-
-    def _is_whole_file_in_context(self, file_path):
-        """Comprueba si el archivo completo ya está en el contexto."""
-        if file_path not in self.selections:
-            return False
-            
-        # Buscar si alguna selección está marcada explícitamente como archivo completo
-        for content, is_whole_file in self.selections[file_path]:
-            if is_whole_file:
-                return True
-            
-        return False
-        
-    def _is_selection_duplicate(self, file_path, selection):
-        """Comprueba si una selección ya existe en el contexto."""
-        if file_path not in self.selections:
-            return False
-            
-        # Solo consideramos duplicado si es exactamente el mismo texto
-        # No es duplicado si esta selección contiene a otra existente
-        for existing_selection, is_whole_file in self.selections[file_path]:
-            if selection == existing_selection:
-                return True
-                
-        return False
-        
-    def _remove_contained_selections(self, file_path, new_selection):
-        """Elimina selecciones que estén contenidas dentro de la nueva selección."""
-        if file_path not in self.selections:
-            return False
-            
-        removed_any = False
-        indices_to_remove = []
-        
-        # Identificar selecciones existentes que son subconjuntos de la nueva
-        for i, (existing, is_whole_file) in enumerate(self.selections[file_path]):
-            # Si la selección existente está contenida completamente en la nueva
-            # y no son idénticas, y no es un archivo completo
-            if not is_whole_file and existing in new_selection and existing != new_selection:
-                indices_to_remove.append(i)
-                removed_any = True
-        
-        # Eliminar las selecciones contenidas (de atrás hacia adelante)
-        for i in sorted(indices_to_remove, reverse=True):
-            # Si estamos viendo este archivo, eliminar el resaltado visual
-            if self.current_file == file_path and i < len(self.selection_ranges[file_path]):
-                sel_start, sel_end = self.selection_ranges[file_path][i]
-                self.file_content.tag_remove(self.highlight_tag, sel_start, sel_end)
-            
-            # Eliminar de las estructuras de datos
-            del self.selections[file_path][i]
-            if i < len(self.selection_ranges[file_path]):
-                del self.selection_ranges[file_path][i]
-        
-        return removed_any
-    
-    def _highlight_selection(self, start_pos, end_pos):
-        """Aplica resaltado visual a una región de texto seleccionada."""
-        self.file_content.tag_add(self.highlight_tag, start_pos, end_pos)
-        self.file_content.tag_configure(
-            self.highlight_tag, 
-            background="#FFFF99",  # Amarillo claro
-            borderwidth=0
-        )
-    
-    def _apply_saved_highlights(self):
-        """Aplica resaltado a las selecciones previamente guardadas para el archivo actual."""
-        if self.current_file in self.selection_ranges:
-            for start_pos, end_pos in self.selection_ranges[self.current_file]:
-                self._highlight_selection(start_pos, end_pos)
-    
-    def _clear_all_highlights(self):
-        """Limpia todos los resaltados visuales en el contenido del archivo."""
-        self.file_content.config(state=tk.NORMAL)
-        self.file_content.tag_remove(self.highlight_tag, "1.0", tk.END)
-        self.file_content.config(state=tk.DISABLED)
+        self.right_paned.add(self.context_panel.frame, weight=1)
     
     def _create_dummy_icons(self):
-        """Crea íconos temporales hasta que se implementen los íconos reales."""
-        # Este método crea íconos básicos para desarrollo, en una aplicación completa
-        # deberías tener archivos de imagen reales
+        """Crea íconos temporales para el árbol de archivos."""
+        # Este método crea íconos básicos para desarrollo
+        # En una aplicación completa deberías usar archivos de imagen reales
         
         # Diccionario para almacenar los íconos
         self.tree_icons = {}
@@ -910,3 +182,526 @@ class ContextSelector(tk.Tk):
                                 icon.put(color, (x, y))
             
             self.tree_icons[icon_name] = icon
+    
+    def update_from_selection_manager(self):
+        """Método callback para el patrón Observer."""
+        try:
+            # Actualizar la visualización del contexto
+            self._update_context_display()
+            
+            # Actualizar los resaltados visuales si el archivo actual está abierto
+            if self.current_file:
+                self.file_content_panel.clear_highlights()
+                ranges = self.selection_manager.get_selection_ranges(self.current_file)
+                if ranges:
+                    self.file_content_panel.apply_highlights(ranges)
+        except Exception as e:
+            print(f"Error en update_from_selection_manager: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    def _open_folder(self):
+        """Abre un diálogo para seleccionar una carpeta y la carga en el árbol."""
+        folder_path = filedialog.askdirectory(title="Seleccionar carpeta")
+        if folder_path:
+            self.current_folder = folder_path
+            self.file_tree_panel.set_current_folder(folder_path)
+            self._load_files()
+            self._save_settings()
+    
+    # En el método _load_files
+    def _load_files(self):
+        """Carga los archivos de la carpeta seleccionada en el árbol."""
+        # Limpiar el árbol actual
+        self.file_tree_panel.clear_tree()
+        
+        if not self.current_folder:
+            return
+        
+        # Asegurarnos de que la ruta esté normalizada
+        self.current_folder = os.path.normpath(self.current_folder)
+        
+        # Obtener la lista de archivos y carpetas
+        files = self.file_manager.scan_directory(self.current_folder)
+        
+        # Añadir cada archivo/carpeta al árbol
+        for file_info in files:
+            self._add_file_to_tree(file_info, "")
+    
+    def _add_file_to_tree(self, file_info, parent):
+        """Añade un archivo o carpeta al árbol de archivos con ícono."""
+        icon = "file"  
+        
+        if file_info["type"] == "directory":
+            icon = "directory"
+        elif "language" in file_info:
+            lang = file_info["language"].lower()
+            if lang in self.tree_icons:
+                icon = lang
+            elif lang == "python":
+                icon = "python"
+            elif lang in ["javascript", "js"]:
+                icon = "javascript"
+            elif lang == "html":
+                icon = "html"
+            elif lang == "css":
+                icon = "css"
+            elif lang in ["markdown", "md"]:
+                icon = "markdown"
+            elif lang == "json":
+                icon = "json"
+            elif lang == "xml":
+                icon = "xml"
+            elif lang in ["text", "txt"]:
+                icon = "text"
+        
+        # Set checkbox value - only for files, not directories
+        checkbox_value = "☐" if file_info["type"] == "file" else ""
+        
+        item_id = self.file_tree_panel.file_tree.insert(
+            parent, 
+            "end", 
+            text=file_info["name"],
+            values=(checkbox_value,),
+            tags=(file_info["type"],),
+            image=self.tree_icons.get(icon, self.tree_icons["file"])
+        )
+        
+        if file_info["type"] == "directory" and "children" in file_info:
+            for child in file_info["children"]:
+                self._add_file_to_tree(child, item_id)
+        
+        return item_id
+    
+    def _on_file_select(self, tree):
+        """Maneja el evento de selección de un archivo en el árbol."""
+        selected_item = tree.selection()
+        if not selected_item:
+            return
+        
+        item_id = selected_item[0]
+        item_tags = tree.item(item_id, "tags")
+        
+        # Si es un directorio, expandir/colapsar
+        if "directory" in item_tags:
+            if tree.item(item_id, "open"):
+                tree.item(item_id, open=False)
+            else:
+                tree.item(item_id, open=True)
+            return
+        
+        # Si es un archivo, cargar su contenido
+        file_path = self._get_full_path(item_id, tree)
+        if file_path and os.path.isfile(file_path):
+            self._load_file_content(file_path)
+    
+    def _on_checkbox_click(self, event, tree):
+        """Maneja los clics en la columna de casillas de verificación."""
+        # Obtener la región donde se hizo clic
+        region = tree.identify_region(event.x, event.y)
+        
+        # Verificar si se hizo clic en una celda
+        if region == "cell":
+            # Obtener la columna donde se hizo clic
+            column = tree.identify_column(event.x)
+            
+            # Verificar si es la columna de casillas de verificación
+            if column == "#1":
+                item_id = tree.identify_row(event.y)
+                if item_id:
+                    # Obtener las etiquetas del elemento
+                    item_tags = tree.item(item_id, "tags")
+                    
+                    # Solo procesar si es un archivo
+                    if "file" in item_tags:
+                        # Obtener el valor actual de la casilla
+                        current_values = tree.item(item_id, "values")
+                        current_state = current_values[0] if current_values else "☐"
+                        
+                        # Cambiar el estado
+                        new_state = "☑" if current_state == "☐" else "☐"
+                        
+                        # Actualizar el valor en el árbol
+                        tree.item(item_id, values=(new_state,))
+                        
+                        # Obtener la ruta completa del archivo
+                        file_path = self._get_full_path(item_id, tree)
+                        
+                        # Actualizar según el nuevo estado
+                        if new_state == "☑":
+                            self._add_complete_file_to_context(file_path)
+                        else:
+                            self.selection_manager.remove_file(file_path)
+    
+    # En _get_full_path
+    def _get_full_path(self, item_id, tree):
+        """Obtiene la ruta completa de un elemento del árbol."""
+        print(f"Obteniendo ruta para item_id: {item_id}")
+        path_parts = []
+        
+        # Recorrer el árbol hacia arriba para construir la ruta
+        current_item = item_id
+        while current_item:
+            item_text = tree.item(current_item, "text")
+            print(f"  Componente de ruta: {item_text}")
+            path_parts.insert(0, item_text)
+            current_item = tree.parent(current_item)
+        
+        print(f"  Componentes completos: {path_parts}")
+        print(f"  Carpeta base: {self.current_folder}")
+        
+        # Construir la ruta completa
+        if self.current_folder:
+            full_path = os.path.join(self.current_folder, *path_parts)
+            print(f"  Ruta completa: {full_path}")
+            print(f"  ¿Existe?: {os.path.exists(full_path)}")
+            return full_path
+        return None
+    
+    def _load_file_content(self, file_path):
+        """Carga el contenido de un archivo en el panel de contenido."""
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+            
+            self.current_file = file_path
+            
+            # Actualizar el contenido en el panel
+            self.file_content_panel.content_text.config(state=tk.NORMAL)
+            self.file_content_panel.content_text.delete(1.0, tk.END)
+            self.file_content_panel.content_text.insert(tk.END, content)
+            
+            # Aplicar resaltado de sintaxis según extensión
+            file_ext = os.path.splitext(file_path)[1].lower()
+            self.syntax_highlighter.highlight(self.file_content_panel.content_text, file_ext)
+            
+            # Aplicar resaltado a las selecciones previas (si existen)
+            ranges = self.selection_manager.get_selection_ranges(file_path)
+            if ranges:
+                self.file_content_panel.apply_highlights(ranges)
+            
+            self.file_content_panel.content_text.config(state=tk.DISABLED)
+            
+            # Actualizar título del frame
+            self.file_content_panel.frame.config(text=f"Contenido: {os.path.basename(file_path)}")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo cargar el archivo: {file_path}\n\nDetalles: {str(e)}")
+
+    def _add_selection_from_panel(self, text_widget):
+        """Añade la selección actual al contexto desde el panel de contenido."""
+        if not self.current_file:
+            return
+        
+        # Obtener la selección actual
+        try:
+            selection = text_widget.get(tk.SEL_FIRST, tk.SEL_LAST)
+            # Guardar también las posiciones de la selección
+            sel_start = text_widget.index(tk.SEL_FIRST)
+            sel_end = text_widget.index(tk.SEL_LAST)
+        except tk.TclError:
+            messagebox.showinfo("Sin selección", "No hay texto seleccionado")
+            return
+        
+        if not selection:
+            return
+        
+        # Usar el SelectionManager para añadir la selección
+        success = self.selection_manager.add_selection(
+            self.current_file, 
+            selection, 
+            (sel_start, sel_end)
+        )
+        
+        if not success:
+            if self.selection_manager.is_whole_file_in_context(self.current_file):
+                messagebox.showinfo("Archivo ya incluido", 
+                                "El archivo completo ya está incluido en el contexto. "
+                                "La selección ya forma parte del contexto.")
+            else:
+                messagebox.showinfo("Selección duplicada", 
+                                "Esta selección ya ha sido añadida al contexto.")
+
+    def _add_selection(self):
+        """Añade la selección actual al contexto (método para menú/atajo)."""
+        self._add_selection_from_panel(self.file_content_panel.content_text)
+
+    def _show_file_context_menu(self, event, text_widget, menu):
+        """Muestra el menú contextual en el área de contenido de archivo."""
+        try:
+            text_widget.selection_get()
+            menu.tk_popup(event.x_root, event.y_root)
+        except:
+            pass
+        finally:
+            menu.grab_release()
+
+    def _add_complete_file_to_context(self, file_path):
+        """Añade el contenido completo de un archivo al contexto."""
+        try:
+            # Verificar si el archivo existe y es legible
+            if not os.path.isfile(file_path):
+                return
+            
+            # Leer el contenido del archivo
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+            
+            # Usar el SelectionManager para añadir el archivo completo
+            self.selection_manager.add_whole_file(file_path, content)
+            
+        except Exception as e:
+            messagebox.showerror("Error al cargar archivo", f"No se pudo cargar el archivo: {str(e)}")
+
+    def _update_context_display(self):
+        """Actualiza la visualización del contexto seleccionado."""
+        # Obtener todas las selecciones del SelectionManager
+        selections = self.selection_manager.get_all_selections()
+        
+        # Actualizar el panel de contexto
+        self.context_panel.update_context(selections)
+
+    def _show_context_menu(self, event, text_widget, menu):
+        """Muestra el menú contextual en el área de contexto."""
+        try:
+            # Marcar la posición del clic
+            text_widget.mark_set("insert", f"@{event.x},{event.y}")
+            
+            # Determinar si el clic está dentro de alguna selección
+            current_pos = text_widget.index("insert")
+            pos_line, pos_col = map(int, current_pos.split('.'))
+            
+            # Verificar si estamos dentro de alguna de las selecciones
+            selection_found = False
+            
+            for file_path, markers in self.context_panel.context_selection_markers.items():
+                for marker in markers:
+                    idx, start_pos, end_pos, is_whole_file = marker
+                    
+                    start_line, start_col = map(int, start_pos.split('.'))
+                    end_line, end_col = map(int, end_pos.split('.'))
+                    
+                    # Si la posición actual está dentro de esta selección
+                    if (pos_line > start_line or (pos_line == start_line and pos_col >= start_col)) and \
+                    (pos_line < end_line or (pos_line == end_line and pos_col <= end_col)):
+                        # Resaltar visualmente la selección en el área de contexto
+                        text_widget.tag_remove("selection_highlight", "1.0", tk.END)
+                        text_widget.tag_add("selection_highlight", start_pos, end_pos)
+                        
+                        # Guardar la referencia a la selección para poder eliminarla
+                        self.current_context_selection = (file_path, idx, is_whole_file)
+                        
+                        # Mostrar el menú contextual
+                        menu.tk_popup(event.x_root, event.y_root)
+                        selection_found = True
+                        break
+                
+                if selection_found:
+                    break
+        except Exception as e:
+            print(f"Error en el menú contextual: {str(e)}")
+        finally:
+            menu.grab_release()
+
+    def _copy_selection(self):
+        """Copia la selección actual al portapapeles."""
+        self.file_content_panel._copy_selection()
+
+    def _copy_context(self):
+        """Copia todo el contexto al portapapeles."""
+        context = self.selection_manager.get_formatted_context()
+        if context:
+            copy_to_clipboard(self, context)
+            messagebox.showinfo("Contexto copiado", "El contexto ha sido copiado al portapapeles")
+        else:
+            messagebox.showinfo("Sin contexto", "No hay contexto para copiar")
+
+    def _save_context(self):
+        """Guarda el contexto en un archivo."""
+        context = self.selection_manager.get_formatted_context()
+        if not context:
+            messagebox.showinfo("Sin contexto", "No hay contexto para guardar")
+            return
+        
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            filetypes=[("Archivos de texto", "*.txt"), ("Todos los archivos", "*.*")],
+            title="Guardar contexto"
+        )
+        
+        if file_path:
+            save_to_file(context, file_path)
+            messagebox.showinfo("Contexto guardado", f"El contexto ha sido guardado en:\n{file_path}")
+
+    def _clear_context(self):
+        """Limpia todo el contexto seleccionado."""
+        if messagebox.askyesno("Limpiar contexto", "¿Está seguro de que desea limpiar todo el contexto?"):
+            self.selection_manager.clear_all()
+
+    def _save_selections(self):
+        """Guarda las selecciones en un archivo."""
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("Archivos JSON", "*.json"), ("Todos los archivos", "*.*")],
+            title="Guardar selecciones"
+        )
+        
+        if file_path:
+            if self.selection_manager.save_selections_to_file(file_path):
+                messagebox.showinfo("Selecciones guardadas", f"Las selecciones han sido guardadas en:\n{file_path}")
+            else:
+                messagebox.showerror("Error", "No se pudieron guardar las selecciones")
+
+    def _load_selections(self):
+        """Carga selecciones desde un archivo."""
+        file_path = filedialog.askopenfilename(
+            defaultextension=".json",
+            filetypes=[("Archivos JSON", "*.json"), ("Todos los archivos", "*.*")],
+            title="Cargar selecciones"
+        )
+        
+        if file_path:
+            if self.selection_manager.load_selections_from_file(file_path):
+                messagebox.showinfo("Selecciones cargadas", "Las selecciones han sido cargadas correctamente")
+            else:
+                messagebox.showerror("Error", "No se pudieron cargar las selecciones")
+
+    def _update_checkbox_state(self, file_path, checked):
+        """Actualiza el estado de la casilla de verificación para un archivo."""
+        # Encontrar el ítem en el árbol que corresponde a esta ruta
+        file_name = os.path.basename(file_path)
+        
+        # Buscar este archivo en el árbol
+        for item_id in self._find_file_item_by_name(file_name):
+            full_path = self._get_full_path(item_id, self.file_tree_panel.file_tree)
+            if full_path == file_path:
+                # Actualizar el valor en el árbol
+                new_state = "☑" if checked else "☐"
+                self.file_tree_panel.file_tree.item(item_id, values=(new_state,))
+                break
+
+    def _find_file_item_by_name(self, file_name):
+        """Encuentra todos los items del árbol que coinciden con un nombre de archivo."""
+        result = []
+        
+        def _find_in_children(parent):
+            for item_id in self.file_tree_panel.file_tree.get_children(parent):
+                if self.file_tree_panel.file_tree.item(item_id, "text") == file_name:
+                    result.append(item_id)
+                _find_in_children(item_id)
+        
+        _find_in_children('')  # Empezar desde la raíz
+        return result
+
+    def _search_selections(self):
+        """Abre un diálogo para buscar en las selecciones."""
+        search_text = tk.simpledialog.askstring("Buscar", "Texto a buscar en las selecciones:")
+        if not search_text:
+            return
+        
+        results = self.selection_manager.search_in_selections(search_text)
+        
+        if not results:
+            messagebox.showinfo("Búsqueda", f"No se encontró '{search_text}' en ninguna selección.")
+            return
+        
+        # Crear una ventana para mostrar resultados
+        search_window = tk.Toplevel(self)
+        search_window.title(f"Resultados de búsqueda: '{search_text}'")
+        search_window.geometry("600x400")
+        
+        # Crear un Treeview para mostrar los resultados
+        tree_frame = ttk.Frame(search_window)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        tree = ttk.Treeview(tree_frame, columns=("file", "selection", "position"))
+        tree.heading("#0", text="Archivo")
+        tree.heading("file", text="Archivo")
+        tree.heading("selection", text="Selección")
+        tree.heading("position", text="Posición")
+        
+        tree.column("#0", width=0, stretch=tk.NO)
+        tree.column("file", width=150)
+        tree.column("selection", width=300)
+        tree.column("position", width=100)
+        
+        tree.pack(fill=tk.BOTH, expand=True)
+        
+        # Llenar el árbol con resultados
+        for file_path, file_results in results.items():
+            file_name = os.path.basename(file_path)
+            
+            for i, (selection_idx, selection, start, end) in enumerate(file_results):
+                # Truncar la selección si es muy larga
+                preview = selection
+                if len(preview) > 50:
+                    preview = preview[:47] + "..."
+                
+                tree.insert("", "end", text="", values=(file_name, preview, f"{start}-{end}"))
+
+    def _open_settings(self):
+        """Abre el diálogo de configuración."""
+        messagebox.showinfo("Configuración", "Funcionalidad en desarrollo")
+
+    def _show_about(self):
+        """Muestra información sobre la aplicación."""
+        messagebox.showinfo(
+            "Acerca de",
+            "Selector de Contexto para LLMs\n"
+            "Versión 1.0\n\n"
+            "Aplicación para seleccionar archivos y fragmentos de código "
+            "como contexto para modelos de lenguaje durante la programación."
+        )
+
+    def _load_settings(self):
+        """Carga la configuración guardada."""
+        try:
+            config_dir = os.path.join(os.path.dirname(__file__), "..", "config")
+            os.makedirs(config_dir, exist_ok=True)
+            
+            config_file = os.path.join(config_dir, "settings.json")
+            if os.path.exists(config_file):
+                with open(config_file, 'r') as f:
+                    settings = json.load(f)
+                
+                # Restaurar última carpeta
+                if "last_folder" in settings and os.path.exists(settings["last_folder"]):
+                    self.current_folder = settings["last_folder"]
+                    self.file_tree_panel.set_current_folder(settings["last_folder"])
+                    self._load_files()
+        except Exception as e:
+            print(f"Error al cargar configuración: {str(e)}")
+
+    def _save_settings(self):
+        """Guarda la configuración actual."""
+        try:
+            config_dir = os.path.join(os.path.dirname(__file__), "..", "config")
+            os.makedirs(config_dir, exist_ok=True)
+            
+            settings = {
+                "last_folder": self.current_folder
+            }
+            
+            config_file = os.path.join(config_dir, "settings.json")
+            with open(config_file, 'w') as f:
+                json.dump(settings, f)
+        except Exception as e:
+            print(f"Error al guardar configuración: {str(e)}")
+            
+    def _remove_selected_text(self):
+        """Elimina la selección actualmente resaltada en el área de contexto."""
+        if hasattr(self, 'current_context_selection'):
+            file_path, idx, is_whole_file = self.current_context_selection
+            
+            if is_whole_file:
+                # Si es un archivo completo, eliminarlo completamente
+                self.selection_manager.remove_file(file_path)
+                
+                # Actualizar el estado del checkbox en el árbol
+                self._update_checkbox_state(file_path, False)
+            else:
+                # Si es una selección individual, eliminar solo esa selección
+                self.selection_manager.remove_selection(file_path, idx)
+            
+            # Limpiar la referencia
+            delattr(self, 'current_context_selection')
