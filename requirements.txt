@@ -1,0 +1,5 @@
+# Este proyecto no requiere dependencias externas específicas más allá de Python 3.7+
+# ya que usa tkinter que viene incluido con la instalación estándar de Python
+
+# Si en el futuro se agregan características adicionales, las dependencias 
+# se listarían aquí
