@@ -64,21 +64,45 @@ class FileTreePanel(Panel):
         """Crea los widgets del panel de archivos."""
         self.frame = ttk.Frame(self.parent)
         
-        # Botón para seleccionar carpeta
-        self.folder_frame = ttk.Frame(self.frame)
+        # Botón para seleccionar carpeta - Estilo más moderno
+        self.folder_frame = ttk.Frame(self.frame, padding=(5, 5, 5, 5))
         self.folder_frame.pack(fill=tk.X, padx=5, pady=5)
         
+        # Crear un estilo personalizado para el botón de selección de carpeta
+        style = ttk.Style()
+        style.configure("Folder.TButton", 
+                         font=("Segoe UI", 9, "normal"))
+        
         self.folder_btn = ttk.Button(self.folder_frame, text="Seleccionar carpeta", 
-                                     command=self._on_select_folder)
+                                     command=self._on_select_folder,
+                                     style="Folder.TButton")
         self.folder_btn.pack(side=tk.LEFT, padx=5)
         
+        # Etiqueta con estilo más moderno
         self.current_folder_var = tk.StringVar(value="Ninguna carpeta seleccionada")
         self.folder_label = ttk.Label(self.folder_frame, textvariable=self.current_folder_var, 
-                                    font=("TkDefaultFont", 9, "italic"))
+                                    font=("Segoe UI", 9, "italic"))
         self.folder_label.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
         
-        # Crear el Treeview para la lista de archivos
-        self.file_frame = ttk.Frame(self.frame)
+        # Frame para botones de acciones múltiples
+        self.actions_frame = ttk.Frame(self.frame, padding=(5, 0, 5, 5))
+        self.actions_frame.pack(fill=tk.X, padx=5, pady=0)
+        
+        # Estilo para botones de acción
+        style.configure("Action.TButton", 
+                         font=("Segoe UI", 9, "normal"))
+        
+        # Botón para añadir múltiples archivos seleccionados
+        self.add_selected_btn = ttk.Button(
+            self.actions_frame,
+            text="Añadir archivos seleccionados",
+            command=self._on_add_selected_files,
+            style="Action.TButton"
+        )
+        self.add_selected_btn.pack(side=tk.LEFT, padx=5, pady=5)
+        
+        # Marco para el árbol de archivos con estilo moderno
+        self.file_frame = ttk.Frame(self.frame, padding=(5, 5, 5, 5))
         self.file_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # Frame para botones de acciones múltiples
@@ -311,6 +335,7 @@ class FileContentPanel(Panel):
     
     def _create_widgets(self):
         """Crea los widgets del panel de contenido."""
+        self.frame = ttk.LabelFrame(self.parent, text="Contenido del archivo", padding=(8, 5, 8, 8))
         self.frame = ttk.LabelFrame(self.parent, text="Contenido del archivo")
         
         # Determinar el tema actual para configurar los colores adecuados
@@ -332,7 +357,7 @@ class FileContentPanel(Panel):
             fg_color = "#FFFFFF"
             selection_bg = "#505050"
             selection_fg = "#FFFFFF"
-            highlight_bg = "#5A5A15"  # Amarillo oscuro
+            highlight_bg = "#3A3A35"  # Amarillo oscuro
         else:
             bg_color = "#FFFFFF"
             fg_color = "#000000"
@@ -371,16 +396,10 @@ class FileContentPanel(Panel):
             background=highlight_bg
         )
         
-        # Botón para añadir selección al contexto
-        self.selection_frame = ttk.Frame(self.frame)
+        # Botón para añadir selección al contexto con estilo moderno
+        self.selection_frame = ttk.Frame(self.frame, padding=(0, 5, 0, 0))
         self.selection_frame.pack(fill=tk.X, padx=5, pady=5)
-        
-        self.add_selection_btn = ttk.Button(
-            self.selection_frame, 
-            text="Añadir selección al contexto", 
-            command=self._handle_add_selection
-        )
-        self.add_selection_btn.pack(side=tk.LEFT, padx=5)
+
         
         # Menú contextual
         self.content_menu = tk.Menu(self.content_text, tearoff=0)
@@ -395,6 +414,21 @@ class FileContentPanel(Panel):
         
         # Vincular el menú contextual
         self.content_text.bind("<Button-3>", self._handle_context_menu)
+        
+
+        
+        # Crear estilo para el botón de selección
+        style = ttk.Style()
+        style.configure("Selection.TButton", 
+                         font=("Segoe UI", 9, "normal"))
+        
+        self.add_selection_btn = ttk.Button(
+            self.selection_frame, 
+            text="Añadir selección al contexto", 
+            command=self._handle_add_selection,
+            style="Selection.TButton"
+        )
+        self.add_selection_btn.pack(side=tk.LEFT, padx=5)
     
     # Modificar FileContentPanel.load_file para que sea más directo
     def load_file(self, file_path):
@@ -512,6 +546,55 @@ class ContextPanel(Panel):
     
     def _create_widgets(self):
         """Crea los widgets del panel de contexto."""
+        self.frame = ttk.LabelFrame(self.parent, text="Contexto seleccionado", padding=(8, 5, 8, 8))
+        
+        # Botones para el contexto con estilo moderno
+        self.btn_frame = ttk.Frame(self.frame, padding=(0, 0, 0, 5))
+        self.btn_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        # Crear estilo para botones de contexto
+        style = ttk.Style()
+        style.configure("Context.TButton", 
+                         font=("Segoe UI", 9, "normal"))
+        
+        # Botones con estilo moderno, más pequeños y mejor organizados
+        button_padding = (8, 2)  # (x, y) padding para botones
+        
+        self.copy_btn = ttk.Button(
+            self.btn_frame, 
+            text="Copiar", 
+            command=self._handle_copy,
+            style="Context.TButton",
+            padding=button_padding
+        )
+        self.copy_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.save_btn = ttk.Button(
+            self.btn_frame, 
+            text="Guardar", 
+            command=self._handle_save,
+            style="Context.TButton",
+            padding=button_padding
+        )
+        self.save_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.stats_btn = ttk.Button(
+            self.btn_frame,
+            text="Estadísticas",
+            command=self._handle_stats,
+            style="Context.TButton",
+            padding=button_padding
+        )
+        self.stats_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.clear_btn = ttk.Button(
+            self.btn_frame, 
+            text="Limpiar",
+            command=self._handle_clear,
+            style="Context.TButton",
+            padding=button_padding
+        )
+        self.clear_btn.pack(side=tk.LEFT, padx=5)
         self.frame = ttk.LabelFrame(self.parent, text="Contexto seleccionado")
         
         # Botones para el contexto

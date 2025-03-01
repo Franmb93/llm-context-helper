@@ -42,6 +42,18 @@ class ContextSelector(tk.Tk):
         # Registrar como observador
         self.selection_manager.add_observer(self)
         
+        # Cargar configuración guardada primero, antes de crear la interfaz
+        self._load_settings()
+        
+        # Establecer un icono y configurar la ventana para que sea más moderna
+        assets_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
+        icon_path = os.path.join(assets_dir, "icon.ico")
+        if os.path.exists(icon_path):
+            self.iconbitmap(default=icon_path)
+        
+        # Establecer padding global
+        self.main_padding = 10
+        
         # Crear íconos para el árbol de archivos
         self._create_dummy_icons()
         
@@ -51,14 +63,105 @@ class ContextSelector(tk.Tk):
         
         self.context_panel.set_remove_handler(self._remove_selected_text)
         create_custom_scroll_event(self)
+        
+        # Aplicar estilo moderno y tema configurado
+        self._apply_settings(self._get_current_settings())
+        
+        # Cargar la carpeta anterior si existe
+        if self.current_folder:
+            self.file_tree_panel.set_current_folder(self.current_folder)
+            self._load_files()
 
-        # Cargar configuración guardada
-        self._load_settings()
-    
-    # Modificar el método _create_menu en ContextSelector para agregar opciones de selección múltiple
+    def _get_current_settings(self):
+        """Obtiene las configuraciones actuales o usa valores predeterminados."""
+        try:
+            config_dir = os.path.join(os.path.dirname(__file__), "..", "config")
+            app_settings_file = os.path.join(config_dir, "app_settings.json")
+            
+            if os.path.exists(app_settings_file):
+                with open(app_settings_file, 'r') as f:
+                    return json.load(f)
+            
+            # Si no hay configuración, devolver valores predeterminados
+            return {
+                'general': {
+                    'theme': 'light',
+                    'font_size': 10,
+                    'word_wrap': False,
+                    'show_line_numbers': True
+                }
+            }
+        except Exception as e:
+            print(f"Error al obtener configuración actual: {str(e)}")
+            # En caso de error, devolver configuración predeterminada
+            return {'general': {'theme': 'light'}}
 
-    # Modificar el método _create_menu en ContextSelector para agregar opciones de selección múltiple
-
+    def _apply_modern_style(self):
+            """Aplica un estilo moderno a la aplicación."""
+            style = ttk.Style()
+            
+            # Usar 'clam' como tema base ya que es uno de los más personalizables
+            style.theme_use("clam")
+            
+            # Configurar colores base para un tema claro moderno
+            bg_color = "#F8F8F8"           # Fondo principal
+            fg_color = "#333333"           # Texto
+            select_bg = "#0078D7"          # Color de selección
+            select_fg = "#FFFFFF"          # Texto sobre selección
+            frame_bg = "#F0F0F0"           # Fondo de marcos
+            border_color = "#DDDDDD"       # Color de bordes
+            
+            # Configuración general
+            style.configure(".", 
+                        background=bg_color, 
+                        foreground=fg_color, 
+                        bordercolor=border_color,
+                        focuscolor=select_bg)
+            
+            # Frames con bordes suaves
+            style.configure("TFrame", 
+                        background=frame_bg, 
+                        borderwidth=0)
+            
+            # LabelFrames con bordes redondeados
+            style.configure("TLabelFrame", 
+                        background=frame_bg, 
+                        borderwidth=1, 
+                        relief="groove")
+            
+            style.configure("TLabelFrame.Label", 
+                        background=frame_bg, 
+                        foreground=fg_color,
+                        font=("Segoe UI", 9, "normal"))
+            
+            # Botones más modernos
+            style.configure("TButton", 
+                        background="#FFFFFF", 
+                        foreground=fg_color, 
+                        relief="flat",
+                        borderwidth=1,
+                        padding=(8, 4),
+                        font=("Segoe UI", 9, "normal"))
+            
+            # Efecto hover para botones
+            style.map("TButton",
+                    background=[("active", select_bg), ("pressed", select_bg)],
+                    foreground=[("active", "#FFFFFF"), ("pressed", "#FFFFFF")],
+                    relief=[("active", "flat"), ("pressed", "flat")])
+            
+            # Configurar el Panedwindow para que sea más moderno
+            style.configure("TPanedwindow", 
+                        background=bg_color)
+            
+            # Configurar separadores de paneles
+            style.configure("Sash", 
+                        background="#CCCCCC",
+                        sashthickness=4)
+            
+            # Aplicar a la ventana principal
+            self.configure(background=bg_color)
+            
+            
     def _create_menu(self):
         """Crea la barra de menú principal."""
         self.menu_bar = tk.Menu(self)
@@ -134,9 +237,9 @@ class ContextSelector(tk.Tk):
     
     def _create_main_layout(self):
         """Crea el diseño principal de la interfaz con paneles."""
-        # Contenedor principal con paneles ajustables
+        # Contenedor principal con paneles ajustables y padding
         self.main_paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
-        self.main_paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.main_paned.pack(fill=tk.BOTH, expand=True, padx=self.main_padding, pady=self.main_padding)
         
         # Panel izquierdo (lista de archivos)
         self.file_tree_panel = FileTreePanel(
@@ -1154,93 +1257,145 @@ class ContextSelector(tk.Tk):
                     
                     # Define colors based on theme
                     if theme == "light":
-                        bg_color = "#F0F0F0"
-                        fg_color = "#000000"
-                        select_bg = "#0078D7"
-                        select_fg = "#FFFFFF"
-                        tree_bg = "#FFFFFF"
-                        text_bg = "#FFFFFF"
-                        text_fg = "#000000"
-                        frame_bg = "#E0E0E0"
-                        button_bg = "#DDDDDD"
-                        button_fg = "#000000"
-                        border_color = "#AAAAAA"
-                        highlight_color = "#FFFF99"  # Light yellow for highlights
+                        bg_color = "#F8F8F8"         # Fondo principal más claro
+                        fg_color = "#333333"         # Texto más suave que negro puro
+                        select_bg = "#0078D7"        # Azul de selección
+                        select_fg = "#FFFFFF"        # Texto en selección
+                        tree_bg = "#FFFFFF"          # Fondo del árbol
+                        text_bg = "#FFFFFF"          # Fondo del texto
+                        text_fg = "#333333"          # Color de texto
+                        frame_bg = "#F0F0F0"         # Fondo de marcos
+                        button_bg = "#FFFFFF"        # Fondo de botones (blanco)
+                        button_fg = "#333333"        # Texto de botones
+                        border_color = "#DDDDDD"     # Bordes más suaves
+                        highlight_color = "#FFEFBA"  # Amarillo muy claro para resaltados
                     else:  # dark
-                        bg_color = "#2D2D2D"
-                        fg_color = "#FFFFFF"
-                        select_bg = "#505050"
-                        select_fg = "#FFFFFF"
-                        tree_bg = "#383838"
-                        text_bg = "#383838"
-                        text_fg = "#FFFFFF"
-                        frame_bg = "#232323"
-                        button_bg = "#444444"
-                        button_fg = "#FFFFFF"
-                        border_color = "#555555"
-                        highlight_color = "#5A5A15"  # Dark yellow for highlights
+                        bg_color = "#282828"         # Fondo principal más oscuro
+                        fg_color = "#E0E0E0"         # Texto más suave que blanco puro
+                        select_bg = "#3A3D41"        # Selección más sutil
+                        select_fg = "#FFFFFF"        # Texto en selección
+                        tree_bg = "#252525"          # Fondo del árbol ligeramente más oscuro
+                        text_bg = "#252525"          # Fondo del texto
+                        text_fg = "#E0E0E0"          # Color de texto
+                        frame_bg = "#1E1E1E"         # Fondo de marcos
+                        button_bg = "#333333"        # Fondo de botones
+                        button_fg = "#E0E0E0"        # Texto de botones
+                        border_color = "#3F3F3F"     # Bordes más visibles
+                        highlight_color = "#3A3A35"  # Color de resaltado mejorado
                     
-                    # Configure ttk styles
+                    # Configure ttk styles for a minimalist, rounded look
+                    
+                    # Estilos generales
                     style.configure(".", 
                                 background=bg_color, 
                                 foreground=fg_color, 
-                                bordercolor=border_color)
+                                bordercolor=border_color,
+                                focuscolor=select_bg)
                     
+                    # Frames con bordes redondeados
                     style.configure("TFrame", 
                                 background=frame_bg, 
                                 borderwidth=1, 
-                                relief="solid", 
-                                bordercolor=border_color)
+                                relief="flat")
                     
+                    # LabelFrames con bordes redondeados
                     style.configure("TLabelFrame", 
                                 background=frame_bg, 
                                 borderwidth=1, 
-                                relief="solid",
-                                bordercolor=border_color)
+                                relief="groove")
                     
                     style.configure("TLabelFrame.Label", 
                                 background=frame_bg, 
-                                foreground=fg_color)
+                                foreground=fg_color,
+                                font=("Segoe UI", 9, "normal"))
                     
+                    # Botones modernos y redondeados
                     style.configure("TButton", 
                                 background=button_bg, 
                                 foreground=button_fg, 
-                                bordercolor=border_color)
+                                bordercolor=border_color,
+                                relief="flat",
+                                borderwidth=0,
+                                padding=(10, 5),
+                                font=("Segoe UI", 9, "normal"))
                     
+                    # Efecto hover para botones
+                    style.map("TButton",
+                            background=[("active", select_bg), ("pressed", select_bg)],
+                            foreground=[("active", "#FFFFFF"), ("pressed", "#FFFFFF")],
+                            relief=[("active", "flat"), ("pressed", "flat")])
+                    
+                    # Labels
                     style.configure("TLabel", 
                                 background=bg_color, 
-                                foreground=fg_color)
+                                foreground=fg_color,
+                                font=("Segoe UI", 9, "normal"))
                     
+                    # Entradas
                     style.configure("TEntry", 
                                 background=text_bg, 
                                 foreground=text_fg, 
                                 fieldbackground=text_bg, 
-                                bordercolor=border_color)
+                                bordercolor=border_color,
+                                padding=5,
+                                font=("Segoe UI", 9, "normal"))
                     
+                    # Checkbuttons
                     style.configure("TCheckbutton", 
                                 background=bg_color, 
-                                foreground=fg_color)
+                                foreground=fg_color,
+                                font=("Segoe UI", 9, "normal"))
                     
+                    # Notebook (pestañas)
                     style.configure("TNotebook", 
                                 background=bg_color, 
-                                foreground=fg_color, 
-                                bordercolor=border_color)
+                                bordercolor=border_color,
+                                tabmargins=[2, 5, 2, 0])
                     
                     style.configure("TNotebook.Tab", 
                                 background=button_bg, 
                                 foreground=button_fg, 
-                                bordercolor=border_color)
+                                bordercolor=border_color,
+                                padding=[10, 4],
+                                font=("Segoe UI", 9, "normal"))
                     
-                    # Configure Treeview style
+                    style.map("TNotebook.Tab",
+                            background=[("selected", bg_color), ("active", select_bg)],
+                            foreground=[("selected", fg_color), ("active", "#FFFFFF")],
+                            expand=[("selected", [1, 1, 1, 0])])
+                    
+                    # Treeview con estilo minimalista
                     style.configure("Treeview", 
                                 background=tree_bg, 
                                 foreground=text_fg, 
                                 fieldbackground=tree_bg, 
-                                bordercolor=border_color)
+                                bordercolor=border_color,
+                                borderwidth=0,
+                                font=("Segoe UI", 9, "normal"))
+                    
+                    style.configure("Treeview.Heading", 
+                                background=frame_bg,
+                                foreground=fg_color,
+                                borderwidth=1,
+                                relief="flat",
+                                font=("Segoe UI", 9, "bold"))
                     
                     style.map("Treeview", 
                             background=[("selected", select_bg)],
                             foreground=[("selected", select_fg)])
+                    
+                    # Scrollbars minimalistas
+                    style.configure("TScrollbar",
+                                background=bg_color,
+                                bordercolor=bg_color,
+                                arrowcolor=button_fg,
+                                troughcolor=frame_bg,
+                                relief="flat",
+                                borderwidth=0)
+                    
+                    style.map("TScrollbar",
+                            background=[("active", button_bg), ("disabled", bg_color)],
+                            arrowcolor=[("active", select_bg), ("disabled", button_fg)])
                     
                     # Update all standard widgets in the application
                     # Main window
@@ -1254,9 +1409,13 @@ class ContextSelector(tk.Tk):
                             insertbackground=text_fg,  # Cursor color
                             selectbackground=select_bg,
                             selectforeground=select_fg,
-                            borderwidth=1,
+                            borderwidth=0,
+                            highlightthickness=1,
                             highlightbackground=border_color,
-                            highlightcolor=border_color
+                            highlightcolor=select_bg,
+                            font=("Consolas", 10),
+                            padx=5,
+                            pady=5
                         )
                         # Update highlight tag color
                         self.file_content_panel.content_text.tag_configure(
@@ -1271,25 +1430,29 @@ class ContextSelector(tk.Tk):
                             insertbackground=text_fg,
                             selectbackground=select_bg,
                             selectforeground=select_fg,
-                            borderwidth=1,
+                            borderwidth=0,
+                            highlightthickness=1,
                             highlightbackground=border_color,
-                            highlightcolor=border_color
+                            highlightcolor=select_bg,
+                            font=("Consolas", 10),
+                            padx=5,
+                            pady=5
                         )
                         # Update tag colors in context text
                         self.context_panel.context_text.tag_configure(
                             "file_header", 
-                            font=("TkDefaultFont", 10, "bold"),
-                            foreground=text_fg  # Use normal text color, not hard-coded
+                            font=("Segoe UI", 10, "bold"),
+                            foreground="#0066CC" if theme == "light" else "#77AAFF"
                         )
                         self.context_panel.context_text.tag_configure(
                             "complete_file", 
-                            font=("TkDefaultFont", 9, "italic"), 
-                            foreground="#00FF00" if theme == "dark" else "#008000"
+                            font=("Segoe UI", 9, "italic"), 
+                            foreground="#008000" if theme == "light" else "#00BB00"
                         )
                         self.context_panel.context_text.tag_configure(
                             "selection_header", 
-                            font=("TkDefaultFont", 9, "italic"), 
-                            foreground="#5599FF" if theme == "dark" else "#0000FF"
+                            font=("Segoe UI", 9, "italic"), 
+                            foreground="#0066CC" if theme == "light" else "#77AAFF"
                         )
                         self.context_panel.context_text.tag_configure(
                             "selection_highlight", 
@@ -1299,13 +1462,16 @@ class ContextSelector(tk.Tk):
                     # Update line numbers if they exist
                     if hasattr(self.file_content_panel, 'line_numbers'):
                         self.file_content_panel.line_numbers.configure(
-                            background=text_bg,
+                            background=frame_bg,
                             foreground=text_fg,
                             highlightbackground=border_color,
-                            highlightcolor=border_color
+                            highlightcolor=border_color,
+                            borderwidth=0,
+                            highlightthickness=0,
+                            font=("Consolas", 10)
                         )
                     
-                    # Update scrollbars - Note: For tkinter scrollbars, only bordercolor works with ttk styling
+                    # Update scrollbars
                     if hasattr(self.file_content_panel, 'content_scrolly'):
                         self._update_scrollbar_colors(self.file_content_panel.content_scrolly, bg_color, text_bg)
                     
@@ -1335,7 +1501,7 @@ class ContextSelector(tk.Tk):
                 font_size = settings['general']['font_size']
                 
                 # Update font in content and context panels
-                font_family = "Courier New"
+                font_family = "Consolas"  # Usar Consolas como fuente monoespaciada para el código
                 if hasattr(self, 'file_content_panel') and hasattr(self.file_content_panel, 'content_text'):
                     self.file_content_panel.content_text.config(font=(font_family, font_size))
                 
@@ -1413,27 +1579,44 @@ class ContextSelector(tk.Tk):
                 
                 # Start autosave task
                 self._autosave_task_id = self.after(interval_ms, autosave_task)
+                self.update_idletasks()
             
         except Exception as e:
             print(f"Error applying settings: {str(e)}")
             import traceback
             traceback.print_exc()
+            
+            # Intento aplicar un estilo básico en caso de error
+            try:
+                style = ttk.Style()
+                style.theme_use("clam")  # Usar tema clam como base
+                
+                # Usar colores predeterminados para modo claro
+                bg_color = "#F8F8F8"
+                fg_color = "#333333"
+                
+                # Configurar elementos básicos
+                style.configure(".", background=bg_color, foreground=fg_color)
+                self.configure(background=bg_color)
+                
+            except Exception as inner_error:
+                print(f"Error applying fallback style: {str(inner_error)}")
 
     def _update_scrollbar_colors(self, scrollbar, bg_color, trough_color):
         """Update scrollbar colors for theme consistency."""
         if isinstance(scrollbar, ttk.Scrollbar):
-            # For ttk scrollbars (may not fully work due to ttk styling limitations)
-            try:
-                scrollbar.configure(background=bg_color)
-            except:
-                pass  # Ignore if the property doesn't exist
+            # Para las barras de desplazamiento ttk, aplicar estilos predefinidos
+            pass
         else:
-            # For tk.Scrollbar
+            # Para barras de desplazamiento tk.Scrollbar
             scrollbar.configure(
-                background=bg_color,
-                troughcolor=trough_color,
-                activebackground=bg_color,
-                highlightbackground=bg_color
+                background="#CCCCCC" if bg_color == "#F8F8F8" else "#555555",  # Color del deslizador
+                troughcolor=trough_color,  # Color del fondo
+                activebackground="#AAAAAA" if bg_color == "#F8F8F8" else "#777777",  # Color al pasar el ratón
+                highlightbackground=bg_color,
+                relief="flat",
+                borderwidth=0,
+                width=10  # Barra más ancha para mejor usabilidad
             )
 
     def _show_about(self):
@@ -1461,18 +1644,7 @@ class ContextSelector(tk.Tk):
                 # Restore last folder
                 if "last_folder" in settings and os.path.exists(settings["last_folder"]):
                     self.current_folder = settings["last_folder"]
-                    self.file_tree_panel.set_current_folder(settings["last_folder"])
-                    self._load_files()
-            
-            # Load application settings
-            app_settings_file = os.path.join(config_dir, "app_settings.json")
-            if os.path.exists(app_settings_file):
-                with open(app_settings_file, 'r') as f:
-                    app_settings = json.load(f)
                     
-                # Apply settings on startup
-                self._apply_settings(app_settings)
-            
         except Exception as e:
             print(f"Error loading settings: {str(e)}")
             import traceback
