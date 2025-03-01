@@ -1,0 +1,33 @@
+{
+  "general": {
+    "theme": "dark",
+    "font_size": 14,
+    "word_wrap": true,
+    "show_line_numbers": true
+  },
+  "file_types": {
+    "extensions": [
+      ".py",
+      ".js",
+      ".html",
+      ".css",
+      ".java",
+      ".cpp",
+      ".c",
+      ".h",
+      ".cs",
+      ".php"
+    ]
+  },
+  "format": {
+    "file_header": "--- {filename} ---",
+    "selection_header": "Selection {index}:",
+    "whole_file_text": "Archivo completo incluido"
+  },
+  "advanced": {
+    "recent_folders_count": 5,
+    "autosave": false,
+    "autosave_interval": 5,
+    "token_method": "Simple (chars/4)"
+  }
+}

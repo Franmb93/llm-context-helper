@@ -219,6 +219,30 @@ class FileTreePanel(Panel):
         """Actualiza la carpeta mostrada."""
         self.current_folder_var.set(folder_path)
     
+    def setup_line_numbers(self, line_numbers_widget):
+        """
+        Configura el widget de números de línea y la sincronización.
+        
+        Args:
+            line_numbers_widget: Widget Text para los números de línea
+        """
+        self.line_numbers = line_numbers_widget
+        self.show_line_numbers = True
+        
+        # Configurar eventos para mantener sincronización
+        self.content_text.bind("<MouseWheel>", self._on_mousewheel)
+        self.content_text.bind("<Button-4>", self._on_mousewheel)
+        self.content_text.bind("<Button-5>", self._on_mousewheel)
+        
+    def _on_mousewheel(self, event):
+        """
+        Maneja eventos de rueda del ratón para sincronizar el desplazamiento.
+        """
+        if hasattr(self, 'line_numbers') and self.show_line_numbers:
+            # Sincronizar la posición de desplazamiento
+            self.line_numbers.yview_moveto(self.content_text.yview()[0])
+        return "break"  # No propagar el evento
+    
     def clear_tree(self):
         """Limpia todos los elementos del árbol."""
         for item in self.file_tree.get_children():
@@ -289,6 +313,33 @@ class FileContentPanel(Panel):
         """Crea los widgets del panel de contenido."""
         self.frame = ttk.LabelFrame(self.parent, text="Contenido del archivo")
         
+        # Determinar el tema actual para configurar los colores adecuados
+        try:
+            app_settings_file = os.path.join(os.path.dirname(__file__), "..", "config", "app_settings.json")
+            theme = "light"  # default
+            if os.path.exists(app_settings_file):
+                with open(app_settings_file, 'r') as f:
+                    import json
+                    app_settings = json.load(f)
+                    if 'general' in app_settings and 'theme' in app_settings['general']:
+                        theme = app_settings['general']['theme']
+        except Exception:
+            theme = "light"  # en caso de error, usar tema claro
+        
+        # Configurar colores basados en el tema
+        if theme == "dark":
+            bg_color = "#383838"
+            fg_color = "#FFFFFF"
+            selection_bg = "#505050"
+            selection_fg = "#FFFFFF"
+            highlight_bg = "#5A5A15"  # Amarillo oscuro
+        else:
+            bg_color = "#FFFFFF"
+            fg_color = "#000000"
+            selection_bg = "#0078D7"
+            selection_fg = "#FFFFFF"
+            highlight_bg = "#FFFF99"  # Amarillo claro
+        
         # Crear widget Text con scrollbars
         self.content_scrolly = ttk.Scrollbar(self.frame)
         self.content_scrolly.pack(side=tk.RIGHT, fill=tk.Y)
@@ -302,12 +353,23 @@ class FileContentPanel(Panel):
             yscrollcommand=self.content_scrolly.set,
             xscrollcommand=self.content_scrollx.set,
             font=("Courier New", 10),
-            state=tk.DISABLED
+            state=tk.DISABLED,
+            background=bg_color,
+            foreground=fg_color,
+            insertbackground=fg_color,
+            selectbackground=selection_bg,
+            selectforeground=selection_fg
         )
         self.content_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
         self.content_scrolly.config(command=self.content_text.yview)
         self.content_scrollx.config(command=self.content_text.xview)
+        
+        # Configurar tag para resaltado de selecciones
+        self.content_text.tag_configure(
+            self.highlight_tag,
+            background=highlight_bg
+        )
         
         # Botón para añadir selección al contexto
         self.selection_frame = ttk.Frame(self.frame)
@@ -491,23 +553,59 @@ class ContextPanel(Panel):
         self.context_scrollx = ttk.Scrollbar(self.frame, orient=tk.HORIZONTAL)
         self.context_scrollx.pack(side=tk.BOTTOM, fill=tk.X)
         
+        # Determinar el tema actual para configurar los colores adecuados
+        try:
+            app_settings_file = os.path.join(os.path.dirname(__file__), "..", "config", "app_settings.json")
+            theme = "light"  # default
+            if os.path.exists(app_settings_file):
+                with open(app_settings_file, 'r') as f:
+                    import json
+                    app_settings = json.load(f)
+                    if 'general' in app_settings and 'theme' in app_settings['general']:
+                        theme = app_settings['general']['theme']
+        except Exception:
+            theme = "light"  # en caso de error, usar tema claro
+        
+        # Configurar colores basados en el tema
+        if theme == "dark":
+            bg_color = "#383838"
+            fg_color = "#FFFFFF"
+            green_color = "#00FF00"  # Verde más brillante para oscuridad
+            blue_color = "#5599FF"   # Azul más brillante para oscuridad
+            selection_bg = "#505050"
+            selection_fg = "#FFFFFF"
+            highlight_bg = "#5A5A15"  # Amarillo oscuro
+        else:
+            bg_color = "#FFFFFF"
+            fg_color = "#000000"
+            green_color = "#008000"  # Verde estándar
+            blue_color = "#0000FF"   # Azul estándar
+            selection_bg = "#0078D7"
+            selection_fg = "#FFFFFF"
+            highlight_bg = "#FFFF99"  # Amarillo claro
+        
         self.context_text = tk.Text(
             self.frame,
             wrap=tk.NONE,
             yscrollcommand=self.context_scrolly.set,
             xscrollcommand=self.context_scrollx.set,
-            font=("Courier New", 10)
+            font=("Courier New", 10),
+            background=bg_color,
+            foreground=fg_color,
+            insertbackground=fg_color,
+            selectbackground=selection_bg,
+            selectforeground=selection_fg
         )
         self.context_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
         self.context_scrolly.config(command=self.context_text.yview)
         self.context_scrollx.config(command=self.context_text.xview)
         
-        # Configurar tags para el formato
+        # Configurar tags para el formato con colores que respeten el tema
         self.context_text.tag_configure("file_header", font=("TkDefaultFont", 10, "bold"))
-        self.context_text.tag_configure("complete_file", font=("TkDefaultFont", 9, "italic"), foreground="#008000")
-        self.context_text.tag_configure("selection_header", font=("TkDefaultFont", 9, "italic"), foreground="#0000FF")
-        self.context_text.tag_configure("selection_highlight", background="#E0E0E0")
+        self.context_text.tag_configure("complete_file", font=("TkDefaultFont", 9, "italic"), foreground=green_color)
+        self.context_text.tag_configure("selection_header", font=("TkDefaultFont", 9, "italic"), foreground=blue_color)
+        self.context_text.tag_configure("selection_highlight", background=highlight_bg)
         
         # Menú contextual para el área de contexto
         self.context_menu = tk.Menu(self.context_text, tearoff=0)

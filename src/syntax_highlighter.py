@@ -258,3 +258,91 @@ class SyntaxHighlighter:
         except Exception as e:
             print(f"Error al aplicar patrón '{tag_name}': {str(e)}")
             pass  # Continuar con otros patrones si hay un error
+        
+    def update_theme(self, theme):
+        """
+        Update syntax highlighting colors based on the theme.
+        
+        Args:
+            theme (str): Theme name ('light' or 'dark')
+        """
+        if theme == "dark":
+            # Dark theme colors
+            self.colors = {
+                'keywords': '#569CD6',     # Light blue
+                'strings': '#CE9178',      # Light orange/brown
+                'comments': '#6A9955',     # Green
+                'functions': '#DCDCAA',    # Yellow
+                'numbers': '#B5CEA8',      # Light green
+                'tags': '#D7BA7D',         # Gold
+                'attributes': '#9CDCFE',   # Light blue
+                'selectors': '#D7BA7D',    # Gold
+                'properties': '#9CDCFE',   # Light blue
+                'values': '#CE9178',       # Light orange/brown
+                'default': '#D4D4D4',      # Light gray (text normal)
+                'decorators': '#C586C0',   # Pink
+                'class_names': '#4EC9B0',  # Teal
+                'self': '#569CD6',         # Light blue (like keywords)
+                'arrow_functions': '#C586C0', # Pink
+                'regex': '#D16969',        # Red
+                'jsx_tags': '#D7BA7D',     # Gold
+                'doctype': '#6A9955',      # Green
+                'entities': '#D7BA7D',     # Gold
+                'units': '#B5CEA8',        # Light green
+                'colors': '#4EC9B0',       # Teal
+                'media_queries': '#C586C0', # Pink
+                'keys': '#9CDCFE',         # Light blue
+                'booleans': '#569CD6',     # Light blue
+                'null': '#569CD6',         # Light blue
+                'headers': '#C586C0',      # Pink
+                'emphasis': '#D4D4D4',     # Light gray
+                'lists': '#DCDCAA',        # Yellow
+                'blockquotes': '#6A9955',  # Green
+                'code': '#CE9178',         # Light orange/brown
+                'links': '#9CDCFE',        # Light blue
+                'images': '#C586C0',       # Pink
+                'horizontal_rules': '#6A9955', # Green
+                'cdata': '#6A9955',        # Green
+                'operators': '#D4D4D4',    # Light gray
+                'preprocessor': '#C586C0'  # Pink
+            }
+        else:
+            # Light theme colors (default)
+            self.colors = {
+                'keywords': '#0000FF',     # Blue
+                'strings': '#008000',      # Green
+                'comments': '#808080',     # Gray
+                'functions': '#800000',    # Brown
+                'numbers': '#FF8000',      # Orange
+                'tags': '#800080',         # Purple
+                'attributes': '#FF0000',   # Red
+                'selectors': '#800080',    # Purple
+                'properties': '#FF0000',   # Red
+                'values': '#0000FF',       # Blue
+                'default': '#000000',      # Black (text normal)
+                'decorators': '#AA6708',   # Dark orange
+                'class_names': '#2B91AF',  # Teal
+                'self': '#0000FF',         # Blue (like keywords)
+                'arrow_functions': '#FF0000', # Red
+                'regex': '#FF00FF',        # Magenta
+                'jsx_tags': '#800080',     # Purple
+                'doctype': '#808080',      # Gray
+                'entities': '#FF0000',     # Red
+                'units': '#FF8000',        # Orange
+                'colors': '#0000FF',       # Blue
+                'media_queries': '#800080', # Purple
+                'keys': '#FF0000',         # Red
+                'booleans': '#0000FF',     # Blue
+                'null': '#0000FF',         # Blue
+                'headers': '#800080',      # Purple
+                'emphasis': '#000080',     # Navy
+                'lists': '#800000',        # Brown
+                'blockquotes': '#808080',  # Gray
+                'code': '#008000',         # Green
+                'links': '#0000FF',        # Blue
+                'images': '#800080',       # Purple
+                'horizontal_rules': '#808080', # Gray
+                'cdata': '#808080',        # Gray
+                'operators': '#000000',    # Black
+                'preprocessor': '#800080'  # Purple
+            }

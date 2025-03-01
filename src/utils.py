@@ -128,3 +128,13 @@ def create_dir_if_not_exists(directory):
     except Exception as e:
         print(f"Error al crear directorio {directory}: {str(e)}")
         return False
+
+def create_custom_scroll_event(root):
+    """
+    Crea un evento virtual personalizado para notificar cambios de desplazamiento.
+    
+    Args:
+        root: Instancia raíz de Tk
+    """
+    root.event_add('<<Scroll>>', '<B1-Motion>', '<MouseWheel>', '<Button-4>', '<Button-5>')
+    return '<<Scroll>>'
