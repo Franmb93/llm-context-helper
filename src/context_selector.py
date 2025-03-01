@@ -127,8 +127,9 @@ class ContextSelector(tk.Tk):
         self.file_tree.heading("#0", text="Archivo")
         self.file_tree.heading("select", text="Incluir")
         
-        # Vincular evento de selección de archivo
+        # Vincular eventos
         self.file_tree.bind("<<TreeviewSelect>>", self._on_file_select)
+        self.file_tree.bind("<ButtonRelease-1>", self._on_checkbox_click)
         
         # Panel derecho (contenido del archivo y contexto)
         self.right_paned = ttk.PanedWindow(self.main_paned, orient=tk.VERTICAL)
@@ -264,11 +265,14 @@ class ContextSelector(tk.Tk):
             elif lang in ["text", "txt"]:
                 icon = "text"
         
+        # Set checkbox value - only for files, not directories
+        checkbox_value = "☐" if file_info["type"] == "file" else ""
+        
         item_id = self.file_tree.insert(
             parent, 
             "end", 
             text=file_info["name"],
-            values=("",),
+            values=(checkbox_value,),
             tags=(file_info["type"],),
             image=self.tree_icons.get(icon, self.tree_icons["file"])
         )
@@ -300,6 +304,47 @@ class ContextSelector(tk.Tk):
         file_path = self._get_full_path(item_id)
         if file_path:
             self._load_file_content(file_path)
+            
+    def _on_checkbox_click(self, event):
+        """Maneja los clics en la columna de casillas de verificación."""
+        # Obtener la región donde se hizo clic
+        region = self.file_tree.identify_region(event.x, event.y)
+        
+        # Verificar si se hizo clic en una celda (no en encabezado, etc.)
+        if region == "cell":
+            # Obtener la columna donde se hizo clic
+            column = self.file_tree.identify_column(event.x)
+            
+            # Verificar si se hizo clic en la columna de casillas de verificación (columna #1)
+            if column == "#1":  # La columna "select" es la #1
+                item_id = self.file_tree.identify_row(event.y)
+                if item_id:
+                    # Obtener las etiquetas del elemento
+                    item_tags = self.file_tree.item(item_id, "tags")
+                    
+                    # Solo procesar si es un archivo (no un directorio)
+                    if "file" in item_tags:
+                        # Obtener el valor actual de la casilla
+                        current_values = self.file_tree.item(item_id, "values")
+                        current_state = current_values[0] if current_values else "☐"
+                        
+                        # Cambiar el estado
+                        new_state = "☑" if current_state == "☐" else "☐"
+                        
+                        # Actualizar el valor en el árbol
+                        self.file_tree.item(item_id, values=(new_state,))
+                        
+                        # Obtener la ruta completa del archivo
+                        file_path = self._get_full_path(item_id)
+                        
+                        # Actualizar el contexto según el nuevo estado
+                        if new_state == "☑":
+                            self._add_complete_file_to_context(file_path)
+                        else:
+                            self._remove_file_from_context(file_path)
+                            
+                        # Actualizar la visualización del contexto
+                        self._update_context_display()
     
     def _get_full_path(self, item_id):
         """Obtiene la ruta completa de un elemento del árbol."""
@@ -371,6 +416,32 @@ class ContextSelector(tk.Tk):
         
         # Actualizar el área de contexto
         self._update_context_display()
+        
+    def _add_complete_file_to_context(self, file_path):
+        """Añade el contenido completo de un archivo al contexto."""
+        try:
+            # Verificar si el archivo existe y es legible
+            if not os.path.isfile(file_path):
+                return
+                
+            # Leer el contenido del archivo
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+                
+            # Marcar que estamos incluyendo el archivo completo con un identificador especial
+            if file_path not in self.selections:
+                self.selections[file_path] = []
+                
+            # Usar None como marcador para indicar que se ha seleccionado el archivo completo
+            self.selections[file_path] = [content]
+            
+        except Exception as e:
+            messagebox.showerror("Error al cargar archivo", f"No se pudo cargar el archivo: {str(e)}")
+            
+    def _remove_file_from_context(self, file_path):
+        """Elimina un archivo del contexto."""
+        if file_path in self.selections:
+            del self.selections[file_path]
     
     def _update_context_display(self):
         """Actualiza la visualización del contexto seleccionado."""
@@ -380,13 +451,24 @@ class ContextSelector(tk.Tk):
         for file_path, selections in self.selections.items():
             if selections:
                 file_name = os.path.basename(file_path)
+                
+                # Mostrar encabezado para el archivo
                 self.context_text.insert(tk.END, f"--- {file_name} ---\n", "file_header")
                 
-                for selection in selections:
-                    self.context_text.insert(tk.END, selection + "\n\n")
+                # Verificar si es archivo completo o selecciones
+                if len(selections) == 1 and len(selections[0]) > 100:  # Asumimos que es archivo completo si hay una única selección grande
+                    self.context_text.insert(tk.END, "Archivo completo incluido\n\n", "complete_file")
+                    self.context_text.insert(tk.END, selections[0] + "\n\n")
+                else:
+                    # Para selecciones múltiples
+                    for i, selection in enumerate(selections):
+                        self.context_text.insert(tk.END, f"Selección {i+1}:\n", "selection_header")
+                        self.context_text.insert(tk.END, selection + "\n\n")
         
         # Configurar tags para el formato
         self.context_text.tag_configure("file_header", font=("TkDefaultFont", 10, "bold"))
+        self.context_text.tag_configure("complete_file", font=("TkDefaultFont", 9, "italic"), foreground="#008000")
+        self.context_text.tag_configure("selection_header", font=("TkDefaultFont", 9, "italic"), foreground="#0000FF")
         
         self.context_text.config(state=tk.NORMAL)
     
