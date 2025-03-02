@@ -2,7 +2,7 @@
   "general": {
     "theme": "dark",
     "font_size": 12,
-    "word_wrap": true,
+    "word_wrap": false,
     "show_line_numbers": true
   },
   "file_types": {
@@ -28,6 +28,6 @@
     "recent_folders_count": 5,
     "autosave": false,
     "autosave_interval": 5,
-    "token_method": "Simple (chars/4)"
+    "token_method": "Avanzado"
   }
 }

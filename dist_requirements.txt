@@ -1,0 +1,2 @@
+# Dependencias para la distribución
+pyinstaller>=5.0.0

@@ -8,7 +8,7 @@ import json
 import tkinter as tk
 from tkinter import ttk
 
-from utils.file_utils import ensure_directory_exists
+from src.utils.file_utils import ensure_directory_exists
 
 def open_settings_dialog(parent):
     """

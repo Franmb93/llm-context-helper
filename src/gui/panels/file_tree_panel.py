@@ -7,7 +7,7 @@ import os
 import tkinter as tk
 from tkinter import ttk
 
-from gui.panels.base_panel import Panel
+from src.gui.panels.base_panel import Panel
 
 class FileTreePanel(Panel):
     """Panel para mostrar y seleccionar archivos."""
@@ -84,6 +84,23 @@ class FileTreePanel(Panel):
             command=self._on_add_selected_files
         )
         self.add_selected_btn.pack(side=tk.LEFT, padx=5, pady=5)
+        
+        # Crear estilo para el botón de donación
+        style = ttk.Style()
+        coffee_color = "#FF813F"
+        style.configure("Donate.TButton",
+                      font=("Segoe UI", 9, "bold"),
+                      background=coffee_color,
+                      foreground="white")
+                      
+        # Botón de donación
+        self.donate_btn = ttk.Button(
+            self.actions_frame,
+            text="Buy me a coffee!",
+            command=self._open_donation_link,
+            style="Donate.TButton"
+        )
+        self.donate_btn.pack(side=tk.LEFT, padx=5, pady=5)
         
         # Scrollbar para el Treeview
         self.file_tree_scroll = ttk.Scrollbar(self.file_frame)
@@ -179,6 +196,11 @@ class FileTreePanel(Panel):
         for child in self.file_tree.get_children(parent_item):
             self.file_tree.selection_add(child)
             self._select_children(child)
+    
+    def _open_donation_link(self):
+        """Abre el enlace de donación en el navegador predeterminado"""
+        import webbrowser
+        webbrowser.open("https://buymeacoffee.com/betanzosdev")
     
     def _set_checkbox_state(self, checked):
         """

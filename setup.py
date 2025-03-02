@@ -14,8 +14,13 @@ setup(
     author_email="your.email@example.com",
     packages=find_packages(),
     install_requires=[
-        # Sin dependencias externas, solo usa tkinter que viene con Python
+        # Sin dependencias externas principales, solo usa tkinter que viene con Python
     ],
+    extras_require={
+        "dev": [
+            "pyinstaller>=5.0.0",
+        ],
+    },
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Environment :: Desktop Environment",

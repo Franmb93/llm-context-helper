@@ -7,7 +7,7 @@ import os
 import tkinter as tk
 from tkinter import ttk
 
-from gui.panels.base_panel import Panel
+from src.gui.panels.base_panel import Panel
 
 class FileContentPanel(Panel):
     """Panel para mostrar el contenido de archivos con resaltado de sintaxis."""

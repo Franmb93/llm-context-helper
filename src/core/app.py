@@ -11,16 +11,18 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 
 # Importaciones internas
-from utils.file_utils import ensure_directory_exists, save_to_file, create_custom_scroll_event
-from utils.clipboard import copy_to_clipboard
-from core.file_manager import FileManager
-from core.selection_manager import SelectionManager
-from utils.syntax_highlighter import SyntaxHighlighter
-from gui.styling.themes import ThemeManager
-from gui.styling.icons import IconManager
-from gui.panels.file_tree_panel import FileTreePanel
-from gui.panels.content_panel import FileContentPanel
-from gui.panels.context_panel import ContextPanel
+from src.utils.file_utils import ensure_directory_exists, save_to_file, create_custom_scroll_event
+from src.utils.clipboard import copy_to_clipboard
+from src.core.file_manager import FileManager
+from src.core.selection_manager import SelectionManager
+from src.core.instructions.instruction_manager import InstructionManager
+from src.utils.syntax_highlighter import SyntaxHighlighter
+from src.gui.styling.themes import ThemeManager
+from src.gui.styling.icons import IconManager
+from src.gui.panels.file_tree_panel import FileTreePanel
+from src.gui.panels.content_panel import FileContentPanel
+from src.gui.panels.context_panel import ContextPanel
+from src.gui.dialogs.instructions_dialog import show_instructions_dialog
 
 class ContextSelectorApp(tk.Tk):
     """Clase principal que implementa la interfaz gráfica del selector de contexto."""
@@ -41,11 +43,13 @@ class ContextSelectorApp(tk.Tk):
         # Inicializar componentes
         self.file_manager = FileManager()
         self.syntax_highlighter = SyntaxHighlighter()
-        self.selection_manager = SelectionManager()
+        self.instruction_manager = InstructionManager()
+        self.selection_manager = SelectionManager(self.instruction_manager)
         self.theme_manager = ThemeManager()
         
         # Registrar como observador
         self.selection_manager.add_observer(self)
+        self.instruction_manager.add_observer(self)
         
         # Cargar configuración guardada primero, antes de crear la interfaz
         self._load_settings()
@@ -130,6 +134,13 @@ class ContextSelectorApp(tk.Tk):
         pref_menu.add_command(label="Configuración", command=self._open_settings)
         self.menu_bar.add_cascade(label="Preferencias", menu=pref_menu)
         
+        # Menú Instrucciones
+        instructions_menu = tk.Menu(self.menu_bar, tearoff=0)
+        instructions_menu.add_command(label="Gestionar instrucciones", command=self._manage_instructions, accelerator="Alt+I")
+        instructions_menu.add_separator()
+        instructions_menu.add_command(label="Sin instrucción", command=lambda: self.instruction_manager.set_current_instruction(None))
+        self.menu_bar.add_cascade(label="Instrucciones", menu=instructions_menu)
+        
         # Menú Ayuda
         help_menu = tk.Menu(self.menu_bar, tearoff=0)
         help_menu.add_command(label="Acerca de", command=self._show_about)
@@ -149,6 +160,9 @@ class ContextSelectorApp(tk.Tk):
         # Atajos para selección múltiple
         self.bind("<Alt-m>", lambda event: self._add_selected_files_to_context(self.file_tree_panel.file_tree.selection()))
         self.bind("<Control-t>", lambda event: self._show_context_stats())
+        
+        # Atajos para instrucciones
+        self.bind("<Alt-i>", lambda event: self._manage_instructions())
     
     def _create_main_layout(self):
         """Crea el diseño principal de la interfaz con paneles."""
@@ -185,12 +199,16 @@ class ContextSelectorApp(tk.Tk):
             on_save=self._save_context,
             on_clear=self._clear_context,
             on_context_menu=self._show_context_menu,
-            on_stats=self._show_context_stats
+            on_stats=self._show_context_stats,
+            on_instructions=self._manage_instructions
         )
         self.right_paned.add(self.context_panel.frame, weight=1)
+        
+        # Configurar el gestor de instrucciones
+        self.context_panel.set_instruction_manager(self.instruction_manager)
     
     def update_from_selection_manager(self):
-        """Método callback para el patrón Observer."""
+        """Método callback para el patrón Observer del SelectionManager."""
         try:
             # Actualizar la visualización del contexto
             self._update_context_display()
@@ -203,6 +221,19 @@ class ContextSelectorApp(tk.Tk):
                     self.file_content_panel.apply_highlights(ranges)
         except Exception as e:
             print(f"Error en update_from_selection_manager: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
+    def update_from_instruction_manager(self):
+        """Método callback para el patrón Observer del InstructionManager."""
+        try:
+            # Actualizar el desplegable de instrucciones
+            self.context_panel.update_from_instruction_manager()
+            
+            # Actualizar la visualización del contexto si hay instrucciones
+            self._update_context_display()
+        except Exception as e:
+            print(f"Error en update_from_instruction_manager: {str(e)}")
             import traceback
             traceback.print_exc()
     
@@ -628,7 +659,7 @@ class ContextSelectorApp(tk.Tk):
         stats = self.selection_manager.get_selection_stats()
         
         # Mostrar usando el diálogo especializado
-        from gui.dialogs.stats_dialog import show_stats_dialog
+        from src.gui.dialogs.stats_dialog import show_stats_dialog
         show_stats_dialog(self, stats)
         
     def _add_selected_files_to_context(self, selected_items):
@@ -686,13 +717,17 @@ class ContextSelectorApp(tk.Tk):
     
     def _open_settings(self):
         """Abre el diálogo de configuración."""
-        from gui.dialogs.settings_dialog import open_settings_dialog
+        from src.gui.dialogs.settings_dialog import open_settings_dialog
         open_settings_dialog(self)
     
     def _show_about(self):
         """Muestra información sobre la aplicación."""
-        from gui.dialogs.about_dialog import show_about_dialog
+        from src.gui.dialogs.about_dialog import show_about_dialog
         show_about_dialog(self)
+        
+    def _manage_instructions(self):
+        """Abre el diálogo para gestionar instrucciones."""
+        show_instructions_dialog(self, self.instruction_manager)
 
     def _load_settings(self):
         """Carga la configuración guardada."""

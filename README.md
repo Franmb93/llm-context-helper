@@ -1,99 +1,74 @@
 # Selector de Contexto para LLMs
 
-Aplicación con interfaz gráfica que permite seleccionar archivos y fragmentos de código como contexto para modelos de lenguaje durante la programación. Implementada en Python con Tkinter.
+Aplicación con interfaz gráfica para seleccionar archivos y fragmentos de código como contexto para modelos de lenguaje durante la programación.
 
-## Características
+## Descripción
 
-- **Explorador de archivos integrado:** Navegación de carpetas con filtrado por tipos de archivos de código
-- **Visualizador de código:** Resaltado de sintaxis básico para lenguajes comunes
-- **Selección flexible:** Añade archivos completos o fragmentos específicos al contexto
-- **Funciones de exportación:** Copia el contexto al portapapeles o guárdalo en un archivo
-- **Interfaces intuitivas:** Atajos de teclado y menús contextuales para operaciones comunes
-- **Persistencia:** Guarda la última carpeta visitada entre sesiones
+Esta herramienta permite a los desarrolladores seleccionar de manera precisa fragmentos de código o archivos completos para proporcionar contexto a los modelos de lenguaje (LLMs) durante tareas de programación, mejorando significativamente las interacciones con asistentes de IA.
+
+## Características principales
+
+- Navegación jerárquica de directorios de código
+- Visualizador de código con resaltado de sintaxis
+- Selección flexible de contexto (fragmentos o archivos completos)
+- Gestión y organización del contexto seleccionado
+- Exportación del contexto para usar con LLMs
+- Personalización y preferencias
 
 ## Instalación
 
-### Requisitos previos
+### Opción 1: Instalación desde el ejecutable (recomendado)
 
+1. Descarga el archivo ejecutable desde la sección de releases
+2. Haz doble clic en el archivo descargado para iniciar la aplicación
+
+### Opción 2: Instalación desde el código fuente
+
+Requisitos:
 - Python 3.7 o superior
-- Tkinter (incluido en la instalación estándar de Python)
 
-### Instalación desde el código fuente
+```bash
+# Clonar el repositorio
+git clone https://github.com/tuusuario/directorio.git
+cd directorio
 
-1. Clona el repositorio:
-   ```
-   git clone https://github.com/yourusername/context-selector.git
-   cd context-selector
-   ```
+# Instalar el paquete
+pip install -e .
 
-2. Instala el paquete en modo de desarrollo:
-   ```
-   pip install -e .
-   ```
-
-3. Ejecuta la aplicación:
-   ```
-   context-selector
-   ```
-
-O simplemente puedes ejecutar el script principal:
+# Ejecutar la aplicación
+context-selector
 ```
-python src/main.py
+
+### Opción 3: Generar tu propio ejecutable
+
+```bash
+# Instalar las dependencias de desarrollo
+pip install -e ".[dev]"
+
+# Generar el ejecutable
+python build_executable.py
 ```
+
+El ejecutable generado estará disponible en la carpeta `dist/`.
 
 ## Uso
 
-1. **Seleccionar carpeta:** Inicia seleccionando una carpeta de proyecto con el botón "Seleccionar carpeta" o mediante Archivo -> Abrir carpeta
-2. **Navegar archivos:** Explora la estructura de archivos en el panel izquierdo
-3. **Ver contenido:** Haz clic en un archivo para mostrar su contenido en el panel central
-4. **Añadir al contexto:** Selecciona fragmentos de código y haz clic en "Añadir selección al contexto" o usa el menú contextual
-5. **Gestionar contexto:** Revisa las selecciones en el panel inferior, elimínalas si es necesario
-6. **Exportar:** Copia el contexto completo al portapapeles o guárdalo en un archivo
-
-### Atajos de teclado
-
-- **Ctrl+O:** Abrir carpeta
-- **Ctrl+S:** Guardar contexto
-- **Ctrl+A:** Añadir selección al contexto
-- **Ctrl+L:** Limpiar contexto
-- **Ctrl+C:** Copiar selección actual (en el visor de código)
-
-## Estructura del proyecto
-
-```
-context_selector/
-│
-├── src/
-│   ├── __init__.py
-│   ├── main.py              # Punto de entrada principal
-│   ├── context_selector.py  # Clase principal de la aplicación
-│   ├── file_manager.py      # Gestión de archivos y carpetas
-│   ├── syntax_highlighter.py # Resaltado de sintaxis básico
-│   └── utils.py             # Funciones auxiliares
-│
-├── resources/
-│   └── icons/               # Iconos para la interfaz
-│
-├── config/
-│   └── settings.json        # Configuración de la aplicación
-│
-├── README.md                # Documentación
-├── requirements.txt         # Dependencias
-└── setup.py                 # Configuración de instalación
-```
-
-## Personalización
-
-La aplicación guarda la configuración en el archivo `config/settings.json`. Actualmente almacena:
-
-- La última carpeta visitada (para restaurarla en la próxima sesión)
-
-En futuras versiones se añadirán más opciones de configuración como temas, tamaños de fuente, y extensiones de archivo a filtrar.
+1. Abre la aplicación
+2. Selecciona la carpeta que contiene tu código usando "Archivo > Abrir carpeta"
+3. Navega por los archivos en el panel izquierdo
+4. Haz clic en un archivo para visualizar su contenido
+5. Selecciona fragmentos de código y añádelos al contexto
+6. Alternativamente, marca las casillas junto a los archivos para incluirlos completos
+7. Copia el contexto recopilado y pégalo en tu conversación con el LLM
 
 ## Contribuciones
 
-Las contribuciones son bienvenidas. Para cambios importantes, por favor abre primero un issue para discutir qué te gustaría cambiar.
+Las contribuciones son bienvenidas. Si encuentras un error o tienes una idea para mejorar la aplicación, no dudes en crear un issue o enviar un pull request.
 
 ## Licencia
 
-Este proyecto está licenciado bajo la [Licencia MIT](LICENSE).
+Este proyecto está bajo la licencia MIT. Ver el archivo LICENSE para más detalles.
+
+## Soporte
+
+Si encuentras útil esta herramienta, considera [invitarme a un café](https://buymeacoffee.com/betanzosdev) ☕

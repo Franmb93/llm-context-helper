@@ -11,7 +11,7 @@ import json
 class SelectionManager:
     """Clase que gestiona las selecciones de código y archivos para el contexto."""
     
-    def __init__(self):
+    def __init__(self, instruction_manager=None):
         """Inicializa el gestor de selecciones."""
         # Diccionario para almacenar selecciones {file_path: [(content, is_whole_file), ...]}
         self.selections = {}  
@@ -19,11 +19,14 @@ class SelectionManager:
         self.selection_ranges = {}
         # Para notificar cambios (patrón Observer)
         self.observers = []
+        # Gestor de instrucciones extra
+        self.instruction_manager = instruction_manager
         
         # Formatos para mostrar los elementos del contexto
         self.file_header_format = "--- {filename} ---"
         self.selection_header_format = "Selección {index}:"
         self.whole_file_text = "Archivo completo incluido"
+        self.instruction_header_format = "### INSTRUCCIÓN EXTRA: {name} ###"
     
     def add_observer(self, observer):
         """Añade un observador para notificar cambios en las selecciones."""
@@ -281,11 +284,26 @@ class SelectionManager:
         Returns:
             str: Contexto formateado
         """
-        if not self.selections:
-            return ""
-        
         result = []
         
+        # Añadir instrucción extra si existe
+        if self.instruction_manager and self.instruction_manager.get_current_instruction():
+            instruction_name = self.instruction_manager.get_current_instruction()
+            instruction_content = self.instruction_manager.get_current_instruction_content()
+            
+            if instruction_content:
+                # Añadir encabezado de instrucción
+                header = self.instruction_header_format.replace("{name}", instruction_name)
+                result.append(header)
+                result.append(instruction_content)
+                result.append("")  # Línea en blanco para separar
+                result.append("")  # Línea en blanco adicional
+        
+        # Verificar si hay selecciones
+        if not self.selections:
+            return "\n".join(result) if result else ""
+        
+        # Añadir selecciones
         for file_path, file_selections in self.selections.items():
             if file_selections:
                 file_name = os.path.basename(file_path)
