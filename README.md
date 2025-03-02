@@ -30,7 +30,7 @@ Requisitos:
 ```bash
 # Clonar el repositorio
 git clone https://github.com/Franmb93/llm-context-helper.git
-cd directorio
+cd llm-context-helper
 
 # Instalar el paquete
 pip install -e .
