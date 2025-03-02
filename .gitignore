@@ -3,5 +3,16 @@
 .idea
 .vscode
 
-src/__pycache__
-logs
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Logs
+logs/
+

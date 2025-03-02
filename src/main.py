@@ -6,18 +6,21 @@ Punto de entrada principal para el Selector de Contexto para LLMs.
 
 import os
 import sys
-from context_selector import ContextSelector
 
-from logger import configure_logging
+# Añadir el directorio raíz al path para importaciones
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from src.core.app import ContextSelectorApp
+from src.utils.logger import configure_logging
+from src.utils.file_utils import ensure_directory_exists
 
 def ensure_assets_directory():
-    """Crea la carpeta de assets si no existe y genera un ícono básico si es necesario."""
+    """Crea la carpeta de assets si no existe y otros recursos necesarios."""
     # Determinar ruta a la carpeta assets
     assets_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
     
     # Crear la carpeta si no existe
-    if not os.path.exists(assets_dir):
-        os.makedirs(assets_dir)
+    ensure_directory_exists(assets_dir)
     
     # Verificar si existe el ícono
     icon_path = os.path.join(assets_dir, "icon.ico")
@@ -37,7 +40,7 @@ def main():
         ensure_assets_directory()
         
         # Iniciar la aplicación
-        app = ContextSelector()
+        app = ContextSelectorApp()
         app.mainloop()
     except Exception as e:
         logger.exception(f"Error no manejado: {str(e)}")
