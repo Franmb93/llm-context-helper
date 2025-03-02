@@ -29,7 +29,7 @@ Requisitos:
 
 ```bash
 # Clonar el repositorio
-git clone [https://github.com/tuusuario/directorio.git](https://github.com/Franmb93/llm-context-helper.git)
+git clone https://github.com/Franmb93/llm-context-helper.git
 cd directorio
 
 # Instalar el paquete
