@@ -39,6 +39,7 @@ class FileManager:
             '.yml': 'YAML',
             '.md': 'Markdown',
             '.txt': 'Text',
+            '.vue': 'Vue'
         }
         
         # Archivos a ignorar
